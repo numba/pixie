@@ -1,7 +1,7 @@
-from pixie import PIXIECompiler
+from pixie import PIXIECompiler, TranslationUnit, ExportConfiguration
+from pixie.cpus import x86
 from pixie.tests.support import PixieTestCase
 import unittest
-import ctypes
 
 
 try:
@@ -17,16 +17,16 @@ except ImportError:
 
 
 llvm_foo_double_double = """
-           define void @"_Z3fooPdS_"(double* %".1", double* %".2", double* %".out")
-           {
-           entry:
-               %.3 = load double, double * %.1
-               %.4 = load double, double * %.2
-               %"res" = fadd double %".3", %".4"
-               store double %"res", double* %".out"
-               ret void
-           }
-           """
+    define void @"_Z3fooPdS_"(double* %".1", double* %".2", double* %".out")
+    {
+    entry:
+        %.3 = load double, double * %.1
+        %.4 = load double, double * %.2
+        %"res" = fadd double %".3", %".4"
+        store double %"res", double* %".out"
+        ret void
+    }
+    """
 
 llvm_foo_i64_i64 = """
            define void @"_Z3fooPlS_"(i64* %".1", i64* %".2", i64* %".out")
@@ -40,16 +40,6 @@ llvm_foo_i64_i64 = """
            }
            """
 
-_double_double_entry = dict(python_name='foo',
-                            symbol_name='_Z3fooPdS_',
-                            signature='void(double*, double*, double*)',
-                            llvm_ir=llvm_foo_double_double)
-
-_i64_i64_entry = dict(python_name='foo',
-                    symbol_name='_Z3fooPlS_',
-                    signature='void(i64*, i64*, i64*)',
-                    llvm_ir=llvm_foo_i64_i64)
-
 
 @unittest.skipUnless(_HAS_NUMBA, "Numba required for test")
 class TestNumbaBinding(PixieTestCase):
@@ -60,26 +50,42 @@ class TestNumbaBinding(PixieTestCase):
     def setUpClass(cls):
         PixieTestCase.setUpClass()
 
-        libfoo = PIXIECompiler('foo_library', output_dir=cls.tmpdir.name)
+        tus = []
+        tus.append(TranslationUnit("llvm_foo_double_double",
+                                   llvm_foo_double_double))
+        tus.append(TranslationUnit("llvm_foo_i64_i64",
+                                   llvm_foo_i64_i64))
 
-        libfoo.add_function(**_double_double_entry)
-        libfoo.add_function(**_i64_i64_entry)
+        export_config = ExportConfiguration('embed_dso')
+        export_config.add_symbol(python_name='foo',
+                                 symbol_name='_Z3fooPlS_',
+                                 signature='void(i64*, i64*, i64*)',)
+        export_config.add_symbol(python_name='foo',
+                                 symbol_name='_Z3fooPdS_',
+                                 signature='void(double*, double*, double*)',)
 
-        libfoo.compile_ext()
-        cls.pixie_lib_decl = libfoo
+        libfoo = PIXIECompiler(library_name='foo_library',
+                               translation_units=tus,
+                               export_configuration=export_config,
+                               baseline_cpu='nocona',
+                               baseline_features=x86.sse3,
+                               python_cext=True,
+                               output_dir=cls.tmpdir.name)
+
+        libfoo.compile()
 
     def test_bind(self):
         with self.load_pixie_module('foo_library') as numba_library:
-            for idx in numba_library.foo:
-                info = numba_library.foo[idx]
-                fptr = info.ctypes_wrapper
-                ctsig = info.signature.as_ctypes()
-                fn = ctypes.CFUNCTYPE(ctsig.return_type, *ctsig.argument_types)(fptr)
+            foo_sym = numba_library.__PIXIE__['symbols']['foo']
+            assert len(foo_sym) == 2  # 2 variants
+            for sig, details in foo_sym.items():
+                cfunc = details['cfunc']
+
                 @njit
                 def sink(*args):
                     pass
 
-                if "double" in str(info.signature):
+                if "double" in sig:
                     dtype = np.float64
                 else:
                     dtype = np.int64
@@ -89,7 +95,7 @@ class TestNumbaBinding(PixieTestCase):
                     x = np.array(10, dtype=dtype)
                     y = np.array(20, dtype=dtype)
                     res = np.array(0, dtype=dtype)
-                    fn(x.ctypes, y.ctypes, res.ctypes)
+                    cfunc(x.ctypes, y.ctypes, res.ctypes)
                     sink(x, y, res)
                     return res
 
@@ -107,13 +113,6 @@ class TestNumbaBinding(PixieTestCase):
             @overload(_foo_dispatch)
             def ol__foo_dispatch(x, y):
 
-                def gen_wrapper(info):
-                    fptr = info.ctypes_wrapper
-                    ctsig = info.signature.as_ctypes()
-                    fn = ctypes.CFUNCTYPE(ctsig.return_type, *ctsig.argument_types)(fptr)
-                    return fn
-
-
                 def isdouble(z):
                     return isinstance(z, types.Float) and z.bitwidth == 64
 
@@ -124,29 +123,24 @@ class TestNumbaBinding(PixieTestCase):
                 def sink(*args):
                     pass
 
+                foo_sym = numba_library.__PIXIE__['symbols']['foo']
                 if isdouble(x) and isdouble(y):
-                    fn = gen_wrapper(numba_library.foo[0])
-                    def impl(x, y):
-                        x = np.array(x)
-                        y = np.array(y)
-                        res = np.array(0.)
-                        fn(x.ctypes, y.ctypes, res.ctypes)
-                        sink(x, y, res)
-                        return np.take(res, 0)
-                    return impl
+                    fn = foo_sym['void(double*, double*, double*)']['cfunc']
+                    dt = np.float64
                 elif isi64(x) and isi64(y):
-                    fn = gen_wrapper(numba_library.foo[1])
-                    def impl(x, y):
-                        x = np.array(x, dtype=np.int64)
-                        y = np.array(y, dtype=np.int64)
-                        res = np.array(0, dtype=np.int64)
-                        fn(x.ctypes, y.ctypes, res.ctypes)
-                        sink(x, y, res)
-                        return np.take(res, 0)
-                    return impl
+                    fn = foo_sym['void(i64*, i64*, i64*)']['cfunc']
+                    dt = np.int64
                 else:
                     return None
 
+                def impl(x, y):
+                    x = np.array(x, dtype=dt)
+                    y = np.array(y, dtype=dt)
+                    res = np.array(0, dtype=dt)
+                    fn(x.ctypes, y.ctypes, res.ctypes)
+                    sink(x, y, res)
+                    return np.take(res, 0)
+                return impl
 
             @njit(['double(double, double)', 'int64(int64, int64)'])
             def foo_dispatch(x, y):
@@ -177,23 +171,31 @@ class TestNumbaBinding(PixieTestCase):
                     return None, None
 
                 sig = ty_x(ty_x, ty_y)
+
                 def codegen(cgctx, builder, sig, llargs):
-                    pixie_entry = numba_library.foo[0]
-                    tmpmod = llvm.parse_bitcode(pixie_entry.bitcode)
+                    bitcode = numba_library.__PIXIE__['bitcode']
+                    tmpmod = llvm.parse_bitcode(bitcode)
                     # deliberately mess with the symbol name to make sure it is
                     # definitely not the symbol from the c-extension being used
                     different_symbol_name = "DIFFERENT_SYMBOL"
-                    new_ir = str(tmpmod).replace(pixie_entry.symbol_name,
-                                             different_symbol_name)
+                    foo_sym = numba_library.__PIXIE__['symbols']['foo']
+                    sym_data = foo_sym['void(double*, double*, double*)']
+                    sym_name = sym_data['symbol']
+                    new_ir = str(tmpmod).replace(sym_name,
+                                                 different_symbol_name)
                     mod = llvm.parse_assembly(new_ir)
                     cgctx.active_code_library.add_llvm_module(mod)
                     double_ptr = llvmir.DoubleType().as_pointer()
-                    fnty = llvmir.FunctionType(llvmir.VoidType(), (double_ptr, double_ptr, double_ptr))
-                    fn = cgutils.get_or_insert_function(builder.module, fnty, different_symbol_name)
+                    fnty = llvmir.FunctionType(llvmir.VoidType(),
+                                               (double_ptr, double_ptr,
+                                                double_ptr))
+                    fn = cgutils.get_or_insert_function(builder.module, fnty,
+                                                        different_symbol_name)
                     x_ptr = cgutils.alloca_once_value(builder, llargs[0])
                     y_ptr = cgutils.alloca_once_value(builder, llargs[1])
                     r_ptr = cgutils.alloca_once(builder, llargs[0].type)
-                    ret = builder.call(fn, (x_ptr, y_ptr, r_ptr))
+                    ret = builder.call(fn, (x_ptr, y_ptr, r_ptr))  # noqa: F841
+                    # TODO: something with ret?
                     return builder.load(r_ptr)
                 return sig, codegen
 

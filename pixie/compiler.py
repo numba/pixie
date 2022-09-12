@@ -1,39 +1,77 @@
 from collections import defaultdict, namedtuple
-import cloudpickle
-import ctypes
 import io
 import os
 import pprint
 import sys
 import tempfile
-import types as pytypes
-from dataclasses import dataclass
 from llvmlite import binding as llvm
 from llvmlite import ir
 from llvmlite.binding import Linkage
+import json
+import zlib
+import uuid
 
 from pixie.platform import Toolchain
-from pixie.codegen_helpers import Context, Codegen
+from pixie.codegen_helpers import Context, Codegen, _module_pass_manager
 from pixie.compiler_lock import compiler_lock
-from pixie import types
+from pixie import types, cpus
 from pixie import llvm_types as lt
+from pixie import overlay, pyapi
 
-ll_input = namedtuple('ll_input', 'symbol_name signature llvm_ir')
 
 NULL = ir.Constant(lt._void_star, None)
 ZERO = ir.Constant(lt._int32, 0)
 ONE = ir.Constant(lt._int32, 1)
+MINUS_ONE = ir.Constant(lt._int32, -1)
 METH_VARARGS_AND_KEYWORDS = ir.Constant(lt._int32, 1 | 2)
+
+
+_pixie_export = namedtuple('_pixie_export',
+                           'symbol_name python_name signature metadata')
+
+
+class TranslationUnit():
+    # Maps to a LLVM module... Probably needs to to be consistent with C.
+
+    def __init__(self, name, source):
+        self._name = name
+        self._source = source
+        if isinstance(source, str):
+            self._mod = llvm.parse_assembly(source)
+        elif isinstance(source, bytes):
+            self._mod = llvm.parse_bitcode(source)
+        else:
+            msg = "Expected string or bytes for source, got '{type(source)}'."
+            raise TypeError(msg)
+
+
+class ExportConfiguration():
+
+    def __init__(self, versioning_strategy):
+        # strategy might be one of: 'privatise' | 'embed_dso' | 'trampoline'
+        self.versioning_strategy = versioning_strategy
+        self._data = []
+
+    def add_symbol(self, symbol_name, python_name, signature, metadata=None):
+        self._data.append(_pixie_export(symbol_name, python_name, signature,
+                                        metadata))
+
 
 # NOTE: This is based on:
 # https://github.com/numba/numba/blob/04ebc63fe1dd1efd5a68cc9caf8f245404d99fa7/numba/pycc/cc.py#L19
-
 class PIXIECompiler(object):  # cf. CC.
 
-    def __init__(self, extension_name, output_dir=None):
-        self._extension_name = extension_name
+    def __init__(self, library_name, translation_units, export_configuration,
+                 baseline_cpu, baseline_features, targets_features=(),
+                 python_cext=True, uuid=None, output_dir="."):
+        self._extension_name = library_name
         self._exported_functions = dict()
-        self._basename = extension_name
+        self._basename = library_name
+        self._uuid = uuid
+        if targets_features:
+            msg = "Target feature specialisation is not implemented."
+            raise NotImplementedError(msg)
+
         # Resolve source module name and directory
         f = sys._getframe(1)
         dct = f.f_globals
@@ -44,21 +82,36 @@ class PIXIECompiler(object):  # cf. CC.
         else:
             assert os.path.isdir(output_dir)
             self._output_dir = output_dir
+
         self._toolchain = Toolchain()
-        self._output_file = self._toolchain.get_ext_filename(extension_name)
+        _output_file = self._toolchain.get_ext_filename(self._extension_name)
+        self._output_file = _output_file
         self._verbose = False
         self._function_table = defaultdict(list)
 
-        self._target_cpu = ''
+        if baseline_features is None:
+            self._baseline_features = ()
+        else:
+            self._baseline_features = baseline_features
 
-    def add_function(self, python_name, symbol_name, signature, llvm_ir):
-        # check this signature
-        sig = types.Signature(signature)
-        data = ll_input(symbol_name,
-                        sig,
-                        llvm_ir)
-        self._function_table[python_name].append(data)
-        self._exported_functions[symbol_name] = data
+        if baseline_cpu is None:
+            self._baseline_features = llvm.get_host_cpu_name()
+        else:
+            self._baseline_cpu = baseline_cpu
+
+        self._exported_symbols = defaultdict(list)
+        llvm_irs = [x._source for x in translation_units
+                    if isinstance(x._source, str)]
+        llvm_bcs = [x._source for x in translation_units
+                    if isinstance(x._source, bytes)]
+        self._sources = {'llvm_ir': llvm_irs, 'llvm_bc': llvm_bcs}
+
+        for d in export_configuration._data:
+            self._exported_symbols[d.python_name].append((d.symbol_name,
+                                                          d.signature,
+                                                          d.metadata))
+
+        self._python_cext = python_cext
 
     def __repr__(self):
         with io.StringIO() as buf:
@@ -75,25 +128,77 @@ class PIXIECompiler(object):  # cf. CC.
 
     @compiler_lock
     def _compile_object_files(self, build_dir):
-        compiler = ModuleCompiler(self._export_entries, self._basename,
-                                  self._extension_name, self._function_table,
-                                  cpu_name=self._target_cpu)
-        temp_obj = os.path.join(build_dir,
-                                os.path.splitext(self._output_file)[0] + '.o')
+        # This compiles the numerous variants.
+        objects = []
+        dll_exports = []
+
+        syms = []
+        for python_name, symsigs in self._exported_symbols.items():
+            for symbol_name, sig, metadata in symsigs:
+                syms.append(symbol_name)
+
+        # Currently set this to empty
+        feature = cpus.Features(())
+        bfeat = self._baseline_features
+        compiler = FeatureSpecificCompiler(self._basename,
+                                           self._extension_name,
+                                           syms,
+                                           self._sources,
+                                           baseline_cpu=self._baseline_cpu,
+                                           baseline_features=bfeat,
+                                           features=feature)
+        hashed = hash(tuple([hash(sym) for sym in syms]))
+        hashed_name = f'{hashed}_{feature.as_selected_feature_flags}.o'
+        obj_fname = os.path.splitext(self._output_file)[0] + hashed_name
+        temp_obj = os.path.join(build_dir, obj_fname)
+        compiler.write_native_object(temp_obj, wrap=True)
+        objects.append(temp_obj), dll_exports.extend(compiler.dll_exports)
+
+        return objects, dll_exports
+
+    @compiler_lock
+    def _compile_cext_object_file(self, build_dir, baseline_cpu,
+                                  baseline_features):
+
+        compiler = ModuleCompiler(self._basename, self._extension_name,
+                                  self._exported_symbols, self._sources,
+                                  baseline_cpu=baseline_cpu,
+                                  baseline_features=baseline_features,
+                                  features=cpus.Features(()),
+                                  uuid=self._uuid)
+        obj_fname = os.path.splitext(self._output_file)[0] + '_meta.o'
+        temp_obj = os.path.join(build_dir, obj_fname)
         compiler.write_native_object(temp_obj, wrap=True)
         return [temp_obj], compiler.dll_exports
 
     @compiler_lock  # cf. CC.compile
-    def compile_ext(self):
+    def compile(self):
         """
         Compile the extension module.
         """
-        self._toolchain.verbose = True
+        # Set this to true to see the link line(s)
+        self._toolchain.verbose = False
+
         prefix = f'pixie-build-{self._basename}-'
         with tempfile.TemporaryDirectory(prefix=prefix) as build_dir:
 
-            # Compile object file
-            objects, dll_exports = self._compile_object_files(build_dir)
+            objects = []
+            dll_exports = []
+
+            # Compile object files for each feature set
+            feature_objects, feature_dll_exports = \
+                self._compile_object_files(build_dir)
+            objects.extend(feature_objects)
+            dll_exports.extend(feature_dll_exports)
+
+            # Compile the PIXIE meta object that adds all the PIXIE specific
+            # data into the DSO if the library needs to be a Python
+            # C-Extension.
+            if self._python_cext:
+                meta_obj, meta_dll_exports = self._compile_cext_object_file(
+                    build_dir, self._baseline_cpu, self._baseline_features)
+                objects.extend(meta_obj)
+                dll_exports.extend(meta_dll_exports)
 
             # Then create shared library
             extra_ldflags = self._get_extra_ldflags()
@@ -106,10 +211,88 @@ class PIXIECompiler(object):  # cf. CC.
                                         extra_ldflags=extra_ldflags)
 
 
+class _FeatureSpecificCompilerBase(object):
+    _DEBUG = False
+
+    def __init__(self, module_name, extension_name, syms, sources, **kwargs):
+
+        self._extension_name = extension_name
+        self._toolchain = Toolchain()
+        self._target_cpu = kwargs.pop('baseline_cpu')  # get from kwargs
+        self._target_features = kwargs.pop('features')  # get from kwargs
+        self.dll_exports = []
+        self._codegen = Codegen(self._extension_name,
+                                cpu_name=self._target_cpu,
+                                target_features=self._target_features)
+        self.module_name = module_name
+        self.context = Context()
+        self._syms = syms
+        self._sources = sources
+
+    def write_llvm_bitcode(self, output, **kws):
+        library = self._perform_export_of_entries()
+        with open(output, 'wb') as fout:
+            fout.write(library.emit_bitcode())
+
+    def write_native_object(self, output, **kws):
+        library = self._perform_export_of_entries()
+        with open(output, 'wb') as fout:
+            fout.write(library.emit_native_object())
+
+    def _perform_export_of_entries(self):
+        raise NotImplementedError
+
+    def _combine_sources(self, lib):
+        # TODO: add other handlers here
+        for src in self._sources['llvm_ir']:
+            mod = llvm.parse_assembly(src)
+            lib.add_llvm_module(mod)
+
+        for src in self._sources['llvm_bc']:
+            mod = llvm.parse_bitcode(src)
+            lib.add_llvm_module(mod)
+
+
+class FeatureSpecificCompiler(_FeatureSpecificCompilerBase):
+    def __init__(self, *args, **kwargs):
+        super(FeatureSpecificCompiler, self).__init__(*args, **kwargs)
+
+    @compiler_lock
+    def _perform_export_of_entries(self):
+        """Exports all the defined entries as mangled versions.
+        """
+        debug = False
+        tmp_lib = self._codegen.create_library(f"_tmp_lib_{str(uuid.uuid4())}")
+        # Combine the sources
+        self._combine_sources(tmp_lib)
+
+        pixie_lib = self._codegen.create_library(self.module_name)
+        pixie_lib.add_llvm_module(tmp_lib._final_module)
+
+        # mark the exports as external
+        for name in self._syms:
+            llvm_func = pixie_lib.get_function(name)
+            llvm_func.linkage = 'external'
+            self.dll_exports.append(name)
+
+        if debug:
+            print(pixie_lib.get_llvm_str())
+        # run opt!
+        mpm = _module_pass_manager(self._codegen._tm)
+        mpm.run(pixie_lib._final_module)
+        return pixie_lib
+
+
+class PyModuleDef_Slot(object):
+    Py_mod_create = ir.IntType(32)(1)
+    Py_mod_exec = ir.IntType(32)(2)
+
+
 # NOTE: This is based on:
+# https://github.com/numba/numba/blob/04ebc63fe1dd1efd5a68cc9caf8f245404d99fa7/numba/pycc/compiler.py#L308
 # https://github.com/numba/numba/blob/04ebc63fe1dd1efd5a68cc9caf8f245404d99fa7/numba/pycc/compiler.py#L80
 
-class _ModuleCompiler(object):
+class ModuleCompiler(_FeatureSpecificCompilerBase):
     """A base class to compile Python modules to a single shared library or
     extension module.
 
@@ -133,126 +316,6 @@ class _ModuleCompiler(object):
                                           lt._int8_star))
 
     method_def_ptr = ir.PointerType(method_def_ty)
-
-    _DEBUG = False
-
-    def __init__(self, export_entries, module_name, extension_name,
-                 _function_table, **kwargs):
-
-        self._extension_name = extension_name
-        self._toolchain = Toolchain()
-        self._target_cpu = ""  # get from kwargs
-        self.dll_exports = []
-        self._codegen = Codegen(self._extension_name)
-        self.module_name = module_name
-        self.export_entries = export_entries
-        self.context = Context()
-        self._function_table = _function_table
-
-    def _emit_python_wrapper(self, llvm_module):
-        """Emit generated Python wrapper and extension module code.
-        """
-        raise NotImplementedError
-
-    def write_llvm_bitcode(self, output, wrap=False, **kws):
-        self.export_python_wrap = wrap
-        library = self._perform_export_of_entries()
-        with open(output, 'wb') as fout:
-            fout.write(library.emit_bitcode())
-
-    def write_native_object(self, output, wrap=False, **kws):
-        self.export_python_wrap = wrap
-        library = self._perform_export_of_entries()
-        with open(output, 'wb') as fout:
-            fout.write(library.emit_native_object())
-
-    @compiler_lock
-    def _perform_export_of_entries(self):
-        """Exports all the defined entries.
-        """
-        pymod_library = self._codegen.create_library(self.module_name)
-
-        # Generate IR for all exported functions
-        for entry in self.export_entries:
-            # Outline bitcode as const
-            bcmod = self._codegen.create_library("_bitcode" + self.module_name)
-            mod = llvm.parse_assembly(entry.llvm_ir)
-            bcmod.add_llvm_module(mod)
-            bcmod.finalize()
-            bitcode = bcmod.emit_bitcode()
-            ir_mod = ir.Module()
-            bc_name = f'bitcode_for_{entry.symbol_name}'
-            bitcode_const_bytes = self.context.insert_const_bytes(ir_mod,
-                                                                  bitcode,
-                                                                  bc_name)
-            fnty = ir.FunctionType(lt._void_star, [])
-            getter_name = f'get_bitcode_for_{entry.symbol_name}'
-            fn = ir.Function(ir_mod, fnty, getter_name)
-            bb = fn.append_basic_block()
-            fn_builder = ir.IRBuilder(bb)
-            fn_builder.ret(bitcode_const_bytes)
-
-            fnty = ir.FunctionType(lt._int64, [])
-            get_sz_name = f'get_bitcode_for_{entry.symbol_name}_size'
-            fn = ir.Function(ir_mod, fnty, get_sz_name)
-            bb = fn.append_basic_block()
-            fn_builder = ir.IRBuilder(bb)
-            fn_builder.ret(ir.Constant(lt._int64, len(bitcode)))
-
-            pymod_library.add_ir_module(ir_mod)
-            mod = llvm.parse_assembly(entry.llvm_ir)
-            pymod_library.add_llvm_module(mod)
-            llvm_func = pymod_library.get_function(entry.symbol_name)
-
-            llvm_func.linkage = 'external'
-            llvm_func.name = entry.symbol_name
-            self.dll_exports.append(entry.symbol_name)
-
-        if self.export_python_wrap:
-            wrapper_module = pymod_library.create_ir_module("wrapper")
-            self._emit_python_wrapper(wrapper_module)
-            pymod_library.add_ir_module(wrapper_module)
-
-        # Hide all functions in the DLL except those explicitly exported
-        pymod_library.finalize()
-        for fn in pymod_library.get_defined_functions():
-            break  # TODO: Make this work correctly.
-            if fn.name not in self.dll_exports:
-                if fn.linkage in {Linkage.private, Linkage.internal}:
-                    # Private/Internal linkage must have "default" visibility
-                    fn.visibility = "default"
-                else:
-                    fn.visibility = 'hidden'
-        if self._DEBUG:
-            print(pymod_library.get_llvm_str())
-
-        return pymod_library
-
-
-class PyModuleDef_Slot(object):
-    Py_mod_create = ir.IntType(32)(1)
-    Py_mod_exec = ir.IntType(32)(2)
-
-
-@dataclass
-class c_signature:
-    return_type: None
-    argument_types: None
-
-
-@dataclass
-class pixie_info:
-    signature: c_signature
-    symbol_name: str  # mangled_name
-    address: int  # address
-    ctypes_wrapper: pytypes.NoneType = None
-    c_call_wrapper: pytypes.NoneType = None
-    bitcode: pytypes.NoneType = None
-
-# NOTE: This is based on:
-# https://github.com/numba/numba/blob/04ebc63fe1dd1efd5a68cc9caf8f245404d99fa7/numba/pycc/compiler.py#L308
-
-class ModuleCompiler(_ModuleCompiler):
 
     def _ptr_fun(ret, *args):
         return ir.PointerType(ir.FunctionType(ret, args))
@@ -325,7 +388,7 @@ class ModuleCompiler(_ModuleCompiler):
             _char_star,
             _char_star,
             lt._llvm_py_ssize_t,
-            _ModuleCompiler.method_def_ptr,
+            method_def_ptr,
             py_module_def_slot_ty_ptr,
             traverseproc_ty,
             inquiry_ty,
@@ -357,6 +420,74 @@ class ModuleCompiler(_ModuleCompiler):
 
         return signature, "PyInit_" + self.module_name
 
+    _DEBUG = False
+
+    def __init__(self, *args, **kwargs):
+        self._uuid = kwargs.pop('uuid', None)
+        super(ModuleCompiler, self).__init__(*args, **kwargs)
+
+    @compiler_lock
+    def _perform_export_of_entries(self):
+        """Exports all the defined meta entries.
+        """
+        pymod_library = self._codegen.create_library(self.module_name)
+
+        # sort out the bitcode for storage
+        tmp_lib = self._codegen.create_library("tmp")
+        self._combine_sources(tmp_lib)
+
+        # force exported symbols as external linkage
+        for python_name, symsigs in self._syms.items():
+            for sym, sig, metadata in symsigs:
+                llvm_func = tmp_lib.get_function(sym)
+                llvm_func.linkage = 'external'
+
+        # finalize
+        tmp_lib.finalize()
+
+        # Outline bitcode as const
+        bitcode = tmp_lib.emit_bitcode()
+        ir_mod = ir.Module()
+        bc_name = f'bitcode_for_{self.module_name}'
+        bitcode_const_bytes = self.context.insert_const_bytes(ir_mod,
+                                                              bitcode,
+                                                              bc_name)
+        fnty = ir.FunctionType(lt._void_star, [])
+        getter_name = f'get_bitcode_for_{self.module_name}'
+        fn = ir.Function(ir_mod, fnty, getter_name)
+        bb = fn.append_basic_block()
+        fn_builder = ir.IRBuilder(bb)
+        fn_builder.ret(bitcode_const_bytes)
+
+        fnty = ir.FunctionType(lt._int64, [])
+        get_sz_name = f'get_bitcode_for_{self.module_name}_size'
+        fn = ir.Function(ir_mod, fnty, get_sz_name)
+        bb = fn.append_basic_block()
+        fn_builder = ir.IRBuilder(bb)
+        fn_builder.ret(ir.Constant(lt._int64, len(bitcode)))
+
+        pymod_library.add_ir_module(ir_mod)
+
+        # Create the bootstrap wrapper
+        wrapper_module = pymod_library.create_ir_module("wrapper")
+        self._emit_python_wrapper(wrapper_module)
+        pymod_library.add_ir_module(wrapper_module)
+
+        # Hide all functions in the DLL except those explicitly exported
+        pymod_library.finalize()
+        for fn in pymod_library.get_defined_functions():
+            break  # TODO: Make this work correctly.
+            if fn.name not in self.dll_exports:
+                if fn.linkage in {Linkage.private, Linkage.internal}:
+                    # Private/Internal linkage must have "default" visibility
+                    fn.visibility = "default"
+                else:
+                    fn.visibility = 'hidden'
+        if self._DEBUG:
+            print(pymod_library.get_llvm_str())
+
+        return pymod_library
+
     def _emit_method_array(self, llvm_module):
         """
         Emits a PyMethodDef array.
@@ -375,58 +506,35 @@ class ModuleCompiler(_ModuleCompiler):
         method_array_ptr = ir.Constant.gep(method_array, [ZERO, ZERO])
         return method_array_ptr
 
-    def _emit_mod_init_payload(self):
+    def if_unlikely(self, builder, pred):
+        return builder.if_then(pred, likely=False)
 
-        def filter_exports():
-            d = dict()
-            for name, info in self._function_table.items():
-                d[name] = defaultdict(dict)
-                for decl in info:
-                    table = dict()
-                    d[name][decl.signature] = table
-                    table['symbol'] = decl.symbol_name
-                    table['llvm_ir'] = decl.llvm_ir
-            return d
+    def is_null(self, builder, val):
+        null = val.type(None)
+        return builder.icmp_unsigned('==', null, val)
 
-        magic = filter_exports()
-        # sanity check
-        cloudpickle.loads(cloudpickle.dumps(magic))
+    def _create_payload(self):
+        tmp = overlay.create_base_payload()
+        if (mod_uuid := self._uuid) is None:
+            mod_uuid = str(uuid.uuid4())
+        tmp['__PIXIE__']['uuid'] = mod_uuid
+        symbol_dict = tmp['__PIXIE__']['symbols']
+        for python_name, defs in self._syms.items():
+            symbol_dict[python_name] = defaultdict(dict)
+            for d in defs:
+                pixie_sig = types.Signature(d[1])
+                cty_str = pixie_sig.as_ctypes_string()
+                v = overlay.add_variant(ctypes_func_string=cty_str,
+                                        raw_symbol=d[0],
+                                        # TODO remove hardcoded feature
+                                        baseline='sse3',
+                                        metadata=d[2])
+                symbol_dict[python_name][d[1]] = v
+        return tmp
 
-        def pixie_module_init_func(obj):
-
-            def fish_bitcode(dso, symbol_name):
-                sz_name = f"get_bitcode_for_{symbol_name}_size"
-                sz_fptr = getattr(dso, sz_name)
-                sz_fptr.argtypes = ()
-                sz_fptr.restype = ctypes.c_long
-                data_name = f"get_bitcode_for_{symbol_name}"
-                data_fptr = getattr(dso, data_name)
-                data_fptr.restype = ctypes.c_void_p
-                data_fptr.argtypes = []
-                bitcode = bytes((ctypes.c_char * sz_fptr()).from_address(
-                    data_fptr()))
-                return bitcode
-
-            dso = ctypes.CDLL(obj.__file__)
-            new_table = dict()
-            for name, info in magic.items():
-                new_table[name] = defaultdict(dict)
-                for index, (sig, v) in enumerate(info.items()):
-                    symbol_name = v['symbol']
-                    ct_fptr = getattr(dso, symbol_name)
-                    ctsig = sig.as_ctypes()
-                    ct_fptr.restype = ctsig.return_type
-                    ct_fptr.argtypes = ctsig.argument_types
-                    address = ctypes.addressof(ct_fptr)
-                    bitcode = fish_bitcode(dso, symbol_name)
-                    new_table[name][index] = pixie_info(sig,
-                                                        symbol_name,
-                                                        address,
-                                                        ctypes_wrapper=ct_fptr,
-                                                        bitcode=bitcode)
-
-            obj.__dict__.update(new_table)
-        return pixie_module_init_func
+    def _emit_mod_init_json_payload(self):
+        payload = self._create_payload()
+        return zlib.compress(bytes(json.dumps(payload), 'UTF-8'))
 
     def _emit_module_bootstrap_function(self, llvm_module):
         def bootstrap_sig_type():
@@ -436,85 +544,146 @@ class ModuleCompiler(_ModuleCompiler):
             name = "module_bootstrap"
             return signature, name
 
+        # Create the bootstrap function, this is the function that does the
+        # necessary bootstrapping to execute the function that was serialised
+        # at compile time in the DSO.
         bootstrap_fn = ir.Function(llvm_module, *bootstrap_sig_type())
         bootstrap_fn.linkage = 'internal'
         entry = bootstrap_fn.append_basic_block('BootstrapEntry')
         builder = ir.IRBuilder(entry)
 
-        pixie_module_init_func = self._emit_mod_init_payload()
-        serialized_mod_init_func = cloudpickle.dumps(pixie_module_init_func)
         ir_mod = builder.module
+
+        # Write Python C-API functions into the module
+        rawpy = pyapi.RawPyAPI
+        PyImport_ImportModule_fn = rawpy.PyImport_ImportModule(llvm_module)
+        PyObject_GetAttrString_fn = rawpy.PyObject_GetAttrString(llvm_module)
+        PyBytes_FromStringAndSize_fn = rawpy.PyBytes_FromStringAndSize(
+            llvm_module)
+        PyObject_CallFunctionObjArgs_fn = rawpy.PyObject_CallFunctionObjArgs(
+            llvm_module)
+        Py_BuildValue_fn = rawpy.Py_BuildValue(llvm_module)
+        PyDict_GetItemString_fn = rawpy.PyDict_GetItemString(llvm_module)
+        PyDict_SetItemString_fn = rawpy.PyDict_SetItemString(llvm_module)
+        PyRun_String_fn = rawpy.PyRun_String(llvm_module)
+        PyUnicode_AsUTF8AndSize_fn = rawpy.PyUnicode_AsUTF8AndSize(llvm_module)
+
+        def check_null_result(result):
+            with self.if_unlikely(builder, self.is_null(builder, result)):
+                builder.ret(MINUS_ONE)
+
+        def check_call(function, args):
+            tmp = builder.call(function, args)
+            if function.return_value.type.is_pointer:
+                check_null_result(tmp)
+                return tmp
+            elif tmp.type == lt._int32:
+                # need to check the return type is inst
+                pred = builder.icmp_unsigned('!=', tmp, tmp.type(0))
+                with self.if_unlikely(builder, pred):
+                    builder.ret(tmp)
+            else:
+                raise ValueError(f"Result type cannot be handled {tmp.type}")
+
+        def const_str(string):
+            return self.context.insert_const_string(llvm_module, string)
+
+        # TODO: this section needs references working out and appropriate
+        # checks/clean up adding.
+
+        # get "loads" attr on json mmodule
+        json_str = const_str('json')
+        json_mod = check_call(PyImport_ImportModule_fn, (json_str,))
+        json_loads_str = const_str('loads')
+        json_loads = check_call(PyObject_GetAttrString_fn,
+                                (json_mod, json_loads_str,))
+
+        # decompress attr on zlib
+        zlib_str = const_str('zlib')
+        zlib_mod = check_call(PyImport_ImportModule_fn, (zlib_str,))
+        zlib_decompress_str = const_str('decompress')
+        zlib_decompress = check_call(PyObject_GetAttrString_fn,
+                                     (zlib_mod, zlib_decompress_str,))
+
+        # get compressed payload function as pybytes
+        serialized_mod_init_func = self._emit_mod_init_json_payload()
         serialized_mod_init_func_bytes = self.context.insert_const_bytes(
             ir_mod, serialized_mod_init_func, '.bytes.pixie_module_init_func')
+        nbytes = len(serialized_mod_init_func)
+        payload_bytes = check_call(PyBytes_FromStringAndSize_fn,
+                                   (serialized_mod_init_func_bytes,
+                                    lt._llvm_py_ssize_t(nbytes),))
 
-        # import cloudpickle
-        def PyImport_ImportModule_sig_type():
-            signature = ir.FunctionType(lt._pyobject_head_p,
-                                        # char *
-                                        (self._char_star,))
+        # call zlib decompress on payload
+        decompressed_payload = check_call(PyObject_CallFunctionObjArgs_fn,
+                                          (zlib_decompress, payload_bytes,
+                                           NULL))
 
-            name = "PyImport_ImportModule"
-            return signature, name
-        PyImport_ImportModule_fn = ir.Function(
-            llvm_module, *PyImport_ImportModule_sig_type())
-        PyImport_ImportModule_fn.linkage = 'external'
-        pickle_str = self.context.insert_const_string(llvm_module,
-                                                      'cloudpickle')
-        pickle_mod = builder.call(PyImport_ImportModule_fn, (pickle_str,))
-        # TODO: check return
+        payload = check_call(PyObject_CallFunctionObjArgs_fn,
+                             (json_loads, decompressed_payload, NULL))
 
-        # get "loads" attr on pickle
-        def PyObject_GetAttrString_sig_type():
-            signature = ir.FunctionType(lt._pyobject_head_p,
-                                        # pyobj*, char *
-                                        (lt._pyobject_head_p,
-                                         self._char_star,))
-            name = "PyObject_GetAttrString"
-            return signature, name
+        # Run a trivial dict ctor to just get some empty dictionaries for us
+        # as globals/locals
+        empty_dict_str = const_str('{}')
+        ldict = check_call(Py_BuildValue_fn, (empty_dict_str,))
+        gdict = check_call(Py_BuildValue_fn, (empty_dict_str,))
 
-        PyObject_GetAttrString_fn = ir.Function(
-            llvm_module, *PyObject_GetAttrString_sig_type())
-        PyObject_GetAttrString_fn.linkage = 'external'
-        pickle_loads_str = self.context.insert_const_string(
-            llvm_module, 'loads')
-        pickle_loads = builder.call(PyObject_GetAttrString_fn,
-                                    (pickle_mod, pickle_loads_str,))
+        # get out payload['__PIXIE_assemblers__']['main']
+        __PIXIE_assemblers__str = const_str('__PIXIE_assemblers__')
+        __PIXIE_assemblers__ = check_call(PyDict_GetItemString_fn, (payload,
+                                          __PIXIE_assemblers__str))
 
-        # get payload as pybytes
-        def PyBytes_FromStringAndSize_sig_type():
-            signature = ir.FunctionType(lt._pyobject_head_p,
-                                        # char *, size_t
-                                        (self._char_star, lt._llvm_py_ssize_t))
-            name = "PyBytes_FromStringAndSize"
-            return signature, name
-        PyBytes_FromStringAndSize_fn = ir.Function(
-            llvm_module, *PyBytes_FromStringAndSize_sig_type())
-        PyBytes_FromStringAndSize_fn.linkage = 'external'
-        payload_bytes = builder.call(
-            PyBytes_FromStringAndSize_fn,
-            (serialized_mod_init_func_bytes,
-             lt._llvm_py_ssize_t(len(serialized_mod_init_func)),))
+        main_str = const_str('main')
+        main = check_call(PyDict_GetItemString_fn, (__PIXIE_assemblers__,
+                                                    main_str,))
 
-        # call pickle loads on payload
-        def PyObject_CallFunctionObjArgs_sig_type():
-            signature = ir.FunctionType(lt._pyobject_head_p,
-                                        # pyobj*, ...
-                                        (lt._pyobject_head_p,), var_arg=True)
-            name = "PyObject_CallFunctionObjArgs"
-            return signature, name
+        # need main as const char *, see _Py_SourceAsString
+        size = builder.alloca(lt._llvm_py_ssize_t)
+        builder.store(ir.Constant(lt._llvm_py_ssize_t, None), size)  # null
+        main_const_str = check_call(PyUnicode_AsUTF8AndSize_fn, (main, size))
 
-        PyObject_CallFunctionObjArgs_fn = ir.Function(
-            llvm_module, *PyObject_CallFunctionObjArgs_sig_type())
-        PyObject_CallFunctionObjArgs_fn.linkage = 'external'
-        payload = builder.call(PyObject_CallFunctionObjArgs_fn,
-                               (pickle_loads, payload_bytes, NULL))
+        # Need to exec the string in main
+        # TODO: get reference
+        # From Include/compile.h:#define Py_file_input 257
+        Py_file_input = lt._int32(257)
+        # TODO: what to do with the result of this call?
+        main_fn_result = check_call(PyRun_String_fn, (main_const_str,  # noqa: F841, E501
+                                                      Py_file_input,
+                                                      ldict,
+                                                      gdict,))
 
-        # finally, execute the payload
+        # Put the "payload" function into the same dict as function "main"
+        payload_str = const_str('payload')
+        check_call(PyDict_SetItemString_fn, (gdict, payload_str, payload))
+
+        # Get the bootstrap function string out of the assemblers
+        bootstrap_str = const_str('bootstrap')
+        bootstrap = check_call(PyDict_GetItemString_fn,
+                               (__PIXIE_assemblers__, bootstrap_str,))
+        bootstrap_const_str = check_call(PyUnicode_AsUTF8AndSize_fn,
+                                         (bootstrap, size))
+
+        # exec the bootstrap function string, the dict above "gdict" has the
+        # locals of "main" and "payload" in it which the bootstrap closes over
+        # TODO: what to do with the result of this call?
+        bootstrap_fn_result = check_call(PyRun_String_fn, (bootstrap_const_str,  # noqa: F841, E501
+                                                           Py_file_input,
+                                                           gdict,
+                                                           ldict,))
+
+        # Get the internal bootstrapping function out of the exec'd env
+        internal_bootstrap_fn = check_call(PyDict_GetItemString_fn,
+                                           (ldict, bootstrap_str,))
+
+        # finally, execute the payload by calling the internal bootstrapping
+        # function
         arg = bootstrap_fn.args[0]
         argslot = builder.alloca(arg.type)
         builder.store(arg, argslot)
-        builder.call(PyObject_CallFunctionObjArgs_fn,
-                     (payload, builder.load(argslot), NULL))
+        # TODO: what to do with the result of this call?
+        result = check_call(PyObject_CallFunctionObjArgs_fn,  # noqa: F841
+                            (internal_bootstrap_fn, builder.load(argslot),
+                             NULL))
 
         # Done with loading
         builder.ret(ZERO)
@@ -614,5 +783,4 @@ class ModuleCompiler(_ModuleCompiler):
         PyModuleDef_Init_fn.linkage = 'external'
         ret = builder.call(PyModuleDef_Init_fn, (mod_def,))
         builder.ret(ret)
-
         self.dll_exports.append(mod_init_fn.name)

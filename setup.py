@@ -1,12 +1,9 @@
-import os
-import platform
 import sys
 from distutils import sysconfig
 from distutils.command import build
-from distutils.command.build_ext import build_ext
 from distutils.spawn import spawn
 
-from setuptools import Extension, find_packages, setup
+from setuptools import find_packages, setup
 import versioneer
 
 _version_module = None
@@ -19,10 +16,10 @@ except ImportError:
         pass
 
 
-min_python_version = "3.7"
+min_python_version = "3.8"
 max_python_version = "3.11"  # exclusive
 min_llvmlite_version = "0.39"
-max_llvmlite_version = "0.41"
+max_llvmlite_version = "0.42"
 
 if sys.platform.startswith('linux'):
     # Make wheels without libpython
@@ -69,7 +66,6 @@ packages = find_packages(include=["pixie", "pixie.*"])
 install_requires = [
     'llvmlite >={},<{}'.format(min_llvmlite_version, max_llvmlite_version),
     'setuptools',
-    'cloudpickle',
 ]
 
 metadata = dict(
@@ -84,10 +80,10 @@ metadata = dict(
         "Operating System :: OS Independent",
         "Programming Language :: Python",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
         "Topic :: Software Development :: Compilers",
     ],
     url="",

@@ -22,3 +22,4 @@ dist/
 .mypy_cache/
 .ipynb_checkpoints/
 __pycache__/
+mvp/_limited_helpermod.c

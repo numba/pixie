@@ -4,6 +4,7 @@ import threading
 # NOTE: This is based on:
 # https://github.com/numba/numba/blob/04ebc63fe1dd1efd5a68cc9caf8f245404d99fa7/numba/core/compiler_lock.py
 
+
 class _CompilerLock(object):
     """Lock for the preventing multiple compiler executions"""
     def __init__(self):

@@ -7,6 +7,11 @@ from llvmlite import binding as llvm
 # and those in
 # https://github.com/numba/numba/blob/04ebc63fe1dd1efd5a68cc9caf8f245404d99fa7/numba/core/cgutils.py
 
+int32_t = ir.IntType(32)
+int8_t = ir.IntType(8)
+voidptr_t = int8_t.as_pointer()
+
+
 class Context():
 
     GENERIC_POINTER = ir.PointerType(ir.IntType(8))
@@ -88,6 +93,31 @@ class Context():
 
     def get_null_value(self, ltype):
         return ltype(None)
+
+    def printf(self, builder, format, *args):
+        """
+        Calls printf().
+        Argument `format` is expected to be a Python string.
+        Values to be printed are listed in `args`.
+
+        Note: There is no checking to ensure there is correct number of values
+        in `args` and there type matches the declaration in the format string.
+        """
+        assert isinstance(format, str)
+        mod = builder.module
+        # Make global constant for format string
+        cstring = voidptr_t
+        fmt_bytes = self.make_bytearray((format + '\00').encode('ascii'))
+        global_fmt = self.global_constant(mod, "printf_format", fmt_bytes)
+        fnty = ir.FunctionType(int32_t, [cstring], var_arg=True)
+        # Insert printf()
+        try:
+            fn = mod.get_global('printf')
+        except KeyError:
+            fn = ir.Function(mod, fnty, name="printf")
+        # Call
+        ptr_fmt = builder.bitcast(global_fmt, cstring)
+        return builder.call(fn, [ptr_fmt] + list(args))
 
 
 # NOTE: This is based on:
@@ -225,11 +255,12 @@ def normalize_ir_text(text):
 # NOTE: This is based on:
 # https://github.com/numba/numba/blob/04ebc63fe1dd1efd5a68cc9caf8f245404d99fa7/numba/core/codegen.py#L1161
 
+
 class Codegen():
 
     _library_class = CodeLibrary
 
-    def __init__(self, module_name, cpu_name=None):
+    def __init__(self, module_name, cpu_name=None, target_features=None):
         initialize_llvm()
 
         self._cpu_name = cpu_name or ''
@@ -240,7 +271,10 @@ class Codegen():
 
         target = llvm.Target.from_triple(llvm.get_process_triple())
         tm_options = dict(opt=3)
-        self._tm_features = self._customize_tm_features()
+        if target_features is not None:
+            self._tm_features = target_features.as_selected_feature_flags
+        else:
+            self._tm_features = ''
         self._customize_tm_options(tm_options)
         tm = target.create_target_machine(**tm_options)
         # Need to bind this to self and keep it alive
@@ -267,10 +301,61 @@ class Codegen():
             cpu_name = self._get_host_cpu_name()
         options['cpu'] = cpu_name
         options['reloc'] = 'pic'
-        options['codemodel'] = 'default'
+        options['codemodel'] = 'jitdefault'
         options['features'] = self._tm_features
 
-    def _customize_tm_features(self):
-        # ISA features are selected according to the requested CPU model
-        # in _customize_tm_options()
-        return ''
+
+def _inlining_threshold(optlevel, sizelevel=0):
+    """
+    Compute the inlining threshold for the desired optimisation level
+
+    Refer to http://llvm.org/docs/doxygen/html/InlineSimple_8cpp_source.html
+    """
+    if optlevel > 2:
+        return 275
+
+    # -Os
+    if sizelevel == 1:
+        return 75
+
+    # -Oz
+    if sizelevel == 2:
+        return 25
+
+    return 225
+
+
+def create_pass_manager_builder(opt=2, loop_vectorize=False,
+                                slp_vectorize=False):
+    """
+    Create an LLVM pass manager with the desired optimisation level and
+    options.
+    """
+    pmb = llvm.create_pass_manager_builder()
+    pmb.opt_level = opt
+    pmb.loop_vectorize = loop_vectorize
+    pmb.slp_vectorize = slp_vectorize
+    pmb.inlining_threshold = _inlining_threshold(opt)
+    return pmb
+
+
+def _pass_manager_builder(**kwargs):
+    opt_level = 3
+    loop_vectorize = 1
+    slp_vectorize = 1
+
+    pmb = create_pass_manager_builder(opt=opt_level,
+                                      loop_vectorize=loop_vectorize,
+                                      slp_vectorize=slp_vectorize,
+                                      **kwargs)
+
+    return pmb
+
+
+def _module_pass_manager(tm, **kwargs):
+    pm = llvm.create_module_pass_manager()
+    tm.add_analysis_passes(pm)
+
+    with _pass_manager_builder(**kwargs) as pmb:
+        pmb.populate(pm)
+    return pm

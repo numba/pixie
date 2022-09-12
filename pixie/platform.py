@@ -1,4 +1,4 @@
-# NOTE: This module is a copy of:
+# NOTE: This module is a copy (with modifications) of:
 # https://github.com/numba/numba/blob/04ebc63fe1dd1efd5a68cc9caf8f245404d99fa7/numba/pycc/platform.py
 
 from distutils.ccompiler import CCompiler, new_compiler
@@ -8,9 +8,8 @@ from distutils import log
 
 import functools
 import os
-import subprocess
 import sys
-from tempfile import NamedTemporaryFile, mkdtemp, gettempdir, TemporaryDirectory
+from tempfile import mkdtemp, TemporaryDirectory
 from contextlib import contextmanager
 
 _configs = {
@@ -27,6 +26,7 @@ def get_configs(arg):
 find_shared_ending = functools.partial(get_configs, 0)
 find_pyext_ending = functools.partial(get_configs, 1)
 
+
 @contextmanager
 def _gentmpfile(suffix, directory):
     # windows locks the tempfile so use a tempdir + file, see
@@ -39,10 +39,11 @@ def _gentmpfile(suffix, directory):
         try:
             ntf.close()
             os.remove(ntf)
-        except:
+        except Exception:
             pass
         else:
             os.rmdir(tmpdir)
+
 
 def _check_external_compiler():
     # see if the external compiler bound in numpy.distutil is present
@@ -57,15 +58,17 @@ def _check_external_compiler():
                     ntf.write(simple_c)
                     ntf.flush()
                     ntf.close()
-                    # *output_dir* is set to avoid the compiler putting temp files
-                    # in the current directory.
+                    # *output_dir* is set to avoid the compiler putting temp
+                    # files in the current directory.
                     compiler.compile([ntf.name], output_dir=basetmpdir)
-            except Exception: # likely CompileError or file system issue
+            except Exception:  # likely CompileError or file system issue
                 return False
     return True
 
 # boolean on whether the externally provided compiler is present and
 # functioning correctly
+
+
 _external_compiler_ok = _check_external_compiler()
 
 
@@ -186,4 +189,3 @@ class Toolchain(object):
         Given a C extension's module name, return its intended filename.
         """
         return self._build_ext.get_ext_filename(ext_name)
-
