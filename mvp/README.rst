@@ -15,11 +15,12 @@ Instructions to run the examples:
    $ conda create -n "<env name>" numba setuptools clang=14 llvmlite=0.40
 
 1. A copy of Numba's source is needed to bootstrap the compiler as the LLVM IR
-  from a cut-down version of Numba's ``helperlib`` is needed. Obtain this source
-  via any means, the rest of the document will refer to the directory containing
-  the source as ``<numba_src>``.
+   from a cut-down version of Numba's ``helperlib`` is needed. Obtain this source
+   via any means, the rest of the document will refer to the directory containing
+   the source as ``<numba_src>``.
 
 2. Bootstrap the Numba AOT compiler by running::
+
    $ python bootstrap.py <numba_src>
 
    This will create a ``_limited_helpermod.c`` and a ``_limited_helpermod.ll``,
@@ -28,33 +29,38 @@ Instructions to run the examples:
 3. To run the MVP "blended compilation" example.
 
    1. Run::
-   $ python pixie_c_compiler.py
 
-   to build an ``objective_functions`` C-extension module from the two `.c`
-   files present in this directory.
+      $ python pixie_c_compiler.py
+
+      to build an ``objective_functions`` C-extension module from the two `.c`
+      files present in this directory.
 
    2. Run::
-   $ python numba_aot_optimiser.py
 
-   to build an ``optimiser`` C-extension module from Numba AOT compiled python
-   code.
+      $ python numba_aot_optimiser.py
+
+      to build an ``optimiser`` C-extension module from Numba AOT compiled python
+      code.
 
    3. Run::
-   $ python numba_mvp.py
 
-   to see the MVP example running. See the Python file for an explanation of
-   what is happening.
+      $ python numba_mvp.py
+
+      to see the MVP example running. See the Python file for an explanation of
+      what is happening.
 
 4. To run a BLAS-like ``DAXPY`` example:
 
    1. Run::
-   $ python numba_aot_daxpy.py
 
-   to build an ``daxpy`` C-extension module from Numba AOT compiled python
-   code.
+      $ python numba_aot_daxpy.py
+
+      to build an ``daxpy`` C-extension module from Numba AOT compiled python
+      code.
 
    2. Run::
-   $ python mvp_daxpy_call.py
 
-   to see a DAXPY example running. See the Python file for an explanation of
-   what is happening.
+      $ python mvp_daxpy_call.py
+
+      to see a DAXPY example running. See the Python file for an explanation of
+      what is happening.
