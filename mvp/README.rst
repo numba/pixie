@@ -6,6 +6,10 @@ the "blended compilation" MVP as described in Numba's road map for 2023. It also
 contains a notebook demonstrating PIXIE and its interaction with a
 proof-of-concept Numba ahead-of-time (AOT) compiler and more detail on the MVP.
 
+NOTE: PIXIE and this demonstration currently target x86_64 CPUs running Linux
+operating systems. Other CPUs and operating systems will be supported in the
+future.
+
 Set up instructions:
 
 0. First create an environment and install PIXIE locally. PIXIE depends on the
