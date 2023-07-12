@@ -21,7 +21,7 @@ Set up instructions:
    compatibility). If using ``conda`` something like this is likely to provide a
    suitable environment for running the demonstration and installing PIXIE::
 
-   $ conda create -n "<env name>" numba setuptools clang=14 llvmlite=0.40
+   $ conda create -n "<env name>" numba setuptools clang=14 llvmlite=0.40 python=3.10 python-graphviz jupyterlab gcc_linux-64 gxx_linux-64
 
 1. A copy of Numba's source is needed to bootstrap the Numba AOT compiler as the
    LLVM IR from a cut-down version of Numba's ``helperlib`` C code is needed.
