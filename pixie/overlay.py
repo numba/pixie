@@ -30,7 +30,7 @@ def get_nil(function):
 
 
 def specialize(obj):
-    def impl(baseline_cpu='host', baseline_features=None):
+    def impl(baseline_cpu='host', baseline_features=None, targets_features=None):
         if baseline_cpu == 'host':
             from llvmlite import binding as llvm
             target_cpu = llvm.get_host_cpu_name()
@@ -59,19 +59,21 @@ def specialize(obj):
                                          symbol_name=data['symbol'],
                                          signature=sig,)
 
-        print("specialization of", obj, "has uuid", obj.__PIXIE__['uuid'])
+        print("Specialization of", obj, "has uuid", obj.__PIXIE__['uuid'])
         specialized_lib_name = f"{module.__name__}_pixie_specialized"
         lib = PIXIECompiler(library_name=specialized_lib_name,
                             translation_units=tus,
                             export_configuration=export_config,
                             baseline_cpu=target_cpu,
-                            baseline_features=target_features,
-                            targets_features=(),
+                            baseline_features=baseline_features,
+                            targets_features=(target_features,),
                             python_cext=True,
                             # the specialization needs the same UUID
                             uuid=obj.__PIXIE__['uuid'],
                             output_dir=outdir)
         lib.compile()
+        dso = os.path.join(lib._output_dir, lib._output_file)
+        print(f"Writing specialized library to {dso}.")
 
     return impl
 

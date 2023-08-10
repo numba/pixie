@@ -102,8 +102,11 @@ class PixieTestCase(TestCase):
 @lru_cache
 def _has_clang():
     cmd = ('clang', '--help')
-    result = subprocess.run(cmd, capture_output=True, timeout=10.)
-    return bool(not result.returncode)
+    try:
+        result = subprocess.run(cmd, capture_output=True, timeout=10., check=True)
+        return bool(not result.returncode)
+    except FileNotFoundError:
+        return False
 
 
 needs_clang = skipUnless(_has_clang(), "Test needs clang")

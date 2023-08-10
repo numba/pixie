@@ -239,6 +239,7 @@ def initialize_llvm():
     llvm.initialize()
     llvm.initialize_native_target()
     llvm.initialize_native_asmprinter()
+    llvm.initialize_native_asmparser()
 
 
 # NOTE: This is from:

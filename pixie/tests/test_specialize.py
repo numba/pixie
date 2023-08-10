@@ -70,9 +70,10 @@ class TestSpecialize(PixieTestCase):
             # cursory check that foo_library is ok
             assert foo_library.__PIXIE__['is_specialized'] is False
             # now specialize
-            feat = (x86.avx512f,)
-            foo_library.__PIXIE__['specialize'](baseline_cpu='skylake-avx512',
-                                                baseline_features=feat)
+            feat = x86.avx512f
+            foo_library.__PIXIE__['specialize'](baseline_cpu='nocona',
+                                                baseline_features=x86.sse3,
+                                                targets_features=(feat,),)
 
         # Reload
         with self.load_pixie_module('foo_library') as foo_library_specialized:

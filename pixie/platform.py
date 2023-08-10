@@ -158,7 +158,7 @@ class Toolchain(object):
                             output_filename, output_dir,
                             libraries, library_dirs,
                             export_symbols=export_symbols,
-                            extra_preargs=extra_ldflags)
+                            extra_postargs=extra_ldflags)
 
     def get_python_libraries(self):
         """

@@ -14,6 +14,8 @@ import uuid
 from pixie.platform import Toolchain
 from pixie.codegen_helpers import Context, Codegen, _module_pass_manager
 from pixie.compiler_lock import compiler_lock
+from pixie.selectors import PyVersionSelector, x86CPUSelector
+from pixie.dso_tools import ElfMapper, shmEmbeddedDSOHandler
 from pixie import types, cpus
 from pixie import llvm_types as lt
 from pixie import overlay, pyapi
@@ -47,7 +49,10 @@ class TranslationUnit():
 
 class ExportConfiguration():
 
-    def __init__(self, versioning_strategy):
+    def __init__(self, versioning_strategy='embed_dso'):
+        if versioning_strategy != 'embed_dso':
+            msg = "The only supported versioning strategy is 'embed_dso'"
+            raise ValueError(msg)
         # strategy might be one of: 'privatise' | 'embed_dso' | 'trampoline'
         self.versioning_strategy = versioning_strategy
         self._data = []
@@ -68,9 +73,17 @@ class PIXIECompiler(object):  # cf. CC.
         self._exported_functions = dict()
         self._basename = library_name
         self._uuid = uuid
+        self._targets_features = targets_features
         if targets_features:
-            msg = "Target feature specialisation is not implemented."
-            raise NotImplementedError(msg)
+            # baseline must not be greater than any target, as such a target
+            # could potentially never be run as there may be no set of
+            # instructions capable of link loading it.
+            if baseline_features > min(targets_features):
+                # TODO check ISA enum is the same for all features, i.e. can't
+                # mix x86 and ARM.'
+                msg = (f"Baseline feature {baseline_features} exceeds minimum "
+                       f"target feature ({min(targets_features)})")
+                raise ValueError(msg)
 
         # Resolve source module name and directory
         f = sys._getframe(1)
@@ -127,15 +140,126 @@ class PIXIECompiler(object):  # cf. CC.
         return ()
 
     @compiler_lock
+    def _compile_feature_specific_dsos(self, build_dir, syms):
+        # this returns a map of feature: dso compiled against that feature
+        binaries = {}
+        all_features = set(self._targets_features) | {self._baseline_features,}
+        for feature in all_features:
+            cpu_feature = cpus.Features(feature)
+            bfeat = self._baseline_features
+            compiler = FeatureSpecificCompiler(self._basename,
+                                            self._extension_name,
+                                            syms,
+                                            self._sources,
+                                            baseline_cpu=self._baseline_cpu,
+                                            baseline_features=bfeat,
+                                            features=cpu_feature)
+            hashed = hash(tuple([hash(sym) for sym in syms]))
+            hashed_name = f'{hashed}_{cpu_feature.as_selected_feature_flags}.o'
+            obj_fname = os.path.splitext(self._output_file)[0] + hashed_name
+            temp_obj = os.path.join(build_dir, obj_fname)
+            compiler.write_native_object(temp_obj, wrap=True)
+            # there's now an ISA specific object file at path temp_obj.
+            objects = (temp_obj,)
+            hashed_libname = f'{hashed}_{cpu_feature.as_selected_feature_flags}.so'
+            extra_ldflags = self._get_extra_ldflags()
+            output_dll = os.path.join(self._output_dir, hashed_libname)
+            libraries = self._toolchain.get_python_libraries()
+            library_dirs = self._toolchain.get_python_library_dirs()
+            self._toolchain.link_shared(output_dll, objects,
+                                        libraries, library_dirs,
+                                        export_symbols=compiler.dll_exports,
+                                        extra_ldflags=extra_ldflags)
+            with open(output_dll, 'rb') as f:
+                binaries[str(feature).upper()] = f.read()
+
+        return binaries
+
+    def _generate_dispatch(self, build_dir, syms, selector_class, dso_handler):
+        mod = ir.Module()
+        mod.triple = llvm.get_process_triple()
+        emap = ElfMapper(mod)
+
+        binaries = self._compile_feature_specific_dsos(build_dir, syms)
+        binaries['baseline'] = binaries[min(binaries.keys())]
+        # create the DSO constructor, it does the select and dispatch
+        emap.create_dso_ctor(binaries, selector_class, dso_handler)
+        # create the DSO destructor, it cleans up the resources used by the
+        # create_dso_ctor.
+        emap.create_dso_dtor(dso_handler)
+
+        return mod, emap
+
+    def create_fake_ifuncs(self, mod, embedded_libhandle_name):
+        DEBUG = False
+        ctx = Context()
+        if DEBUG:
+            def printf(builder, *args):
+                ctx.printf(builder, *args)
+        else:
+            def printf(builder, *args):
+                pass
+        # creates the ifunc-like behaviour for the exported symbols
+        _handle = mod.get_global(embedded_libhandle_name)
+        for python_name, symsigs in self._exported_symbols.items():
+            for symbol_name, sig, metadata in symsigs:
+                pixie_sig = types.Signature(sig)
+                fnty = pixie_sig.as_llvm_function_type()
+                # create a global fnptr for the symbol
+                fnty_as_ptr = fnty.as_pointer()
+                # the dlsym return is just a void *
+                void_ptr_ty = ir.IntType(8).as_pointer()
+                fnptr_cache = ir.GlobalVariable(mod, void_ptr_ty,
+                                                f"_fnptr_cache_for_{symbol_name}")
+                # nullify on init, this is important state as the trampoline
+                # function branches on the NULL.
+                fnptr_cache.initializer = ir.Constant(fnptr_cache.type.pointee, None)
+
+                # create a function that will trampoline
+                trampoline_fn = ir.Function(mod, fnty,
+                                            name=symbol_name)
+                block = trampoline_fn.append_basic_block(name="entry")
+                builder = ir.IRBuilder(block)
+
+                fnptr_local_ref = builder.alloca(fnty_as_ptr)
+                pred = builder.icmp_unsigned("==", builder.load(fnptr_cache), fnptr_cache.type(None))
+                printf(builder, "predicate %d\n", pred)
+                with builder.if_else(pred) as (then, otherwise):
+                    with then:
+                        printf(builder, "calling dlsym\n")
+                        # find the symbol
+                        dso = builder.load(_handle)
+                        printf(builder, "dso is at %d\n", dso)
+                        from pixie.mcext import c
+                        const_symbol_name = ctx.insert_const_string(mod, symbol_name)
+                        sym = c.dlfcn.dlsym(builder, dso, const_symbol_name)
+                        printf(builder, "called dlsym, %d\n", sym)
+                        builder.store(sym, fnptr_cache)
+                        builder.store(builder.bitcast(sym, fnty_as_ptr), fnptr_local_ref)
+                    with otherwise:
+                        printf(builder, "replay from cache\n")
+                        # store the dso global value into the slot
+                        builder.store(builder.bitcast(builder.load(fnptr_cache), fnty_as_ptr), fnptr_local_ref)
+                fn = builder.load(fnptr_local_ref)
+                builder.call(fn, trampoline_fn.args)
+                builder.ret_void()
+
+    @compiler_lock
     def _compile_object_files(self, build_dir):
         # This compiles the numerous variants.
         objects = []
         dll_exports = []
 
+
         syms = []
         for python_name, symsigs in self._exported_symbols.items():
             for symbol_name, sig, metadata in symsigs:
                 syms.append(symbol_name)
+
+        selector_class = x86CPUSelector
+        dso_handler = shmEmbeddedDSOHandler()
+        mod, emap = self._generate_dispatch(build_dir, syms, selector_class, dso_handler)
+        self.create_fake_ifuncs(mod, emap._embedded_libhandle_name)
 
         # Currently set this to empty
         feature = cpus.Features(())
@@ -143,7 +267,9 @@ class PIXIECompiler(object):  # cf. CC.
         compiler = FeatureSpecificCompiler(self._basename,
                                            self._extension_name,
                                            syms,
-                                           self._sources,
+                                           # self._sources,
+                                           {'llvm_ir':[str(mod)],
+                                            'llvm_bc':[]},
                                            baseline_cpu=self._baseline_cpu,
                                            baseline_features=bfeat,
                                            features=feature)
@@ -643,8 +769,9 @@ class ModuleCompiler(_FeatureSpecificCompilerBase):
         main_const_str = check_call(PyUnicode_AsUTF8AndSize_fn, (main, size))
 
         # Need to exec the string in main
-        # TODO: get reference
-        # From Include/compile.h:#define Py_file_input 257
+        # From:
+        # https://github.com/python/cpython/blob/238efbecab24204f822b1d1611914f5bcb2ae2de/Include/compile.h#L9
+        # #define Py_file_input 257
         Py_file_input = lt._int32(257)
         # TODO: what to do with the result of this call?
         main_fn_result = check_call(PyRun_String_fn, (main_const_str,  # noqa: F841, E501
