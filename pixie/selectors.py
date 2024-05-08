@@ -17,6 +17,20 @@ class Selector():
         self._ctx = Context()
         self._embedded_data = self._embed_data()
         self._DEBUG = False
+        self._debug_selector_str = self._debug_selector(mod)
+
+    def _debug_selector(self, mod):
+        # add global
+        _selected_dso = self._ctx.add_global_variable(mod, c.types.charptr,
+                                                      "_selected_dso")
+        _selected_dso.linkage = "linkonce_odr"
+        _selected_dso.initializer = _selected_dso.type.pointee(None)
+
+        fnty = ir.FunctionType(c.types.charptr, ())
+        get_selected_fn = ir.Function(mod, fnty, "get_selected_dso")
+        fn_builder = ir.IRBuilder(get_selected_fn.append_basic_block())
+        fn_builder.ret(fn_builder.load(_selected_dso))
+        return _selected_dso
 
     def debug_print(self, builder, *args):
         if self._DEBUG:
@@ -50,6 +64,13 @@ class Selector():
         return data_map
 
     def _select(self, builder, entry):
+        # This is purely for debug/testing
+        str_entry = self._ctx.insert_const_string(builder.module, str(entry))
+        # self._ctx.printf(builder, "about to store to debug selector global\n")
+        builder.store(str_entry, self._debug_selector_str)
+        # self._ctx.printf(builder, "done store to debug selector global\n")
+
+        # this does the wiring for the selected embedded data
         nbytes_fn = self._embedded_data[entry].nbytes_fn
         get_bytes_fn = self._embedded_data[entry].get_bytes_fn
         builder.store(builder.bitcast(nbytes_fn,
@@ -256,22 +277,31 @@ class x86CPUSelector(Selector):
             cpuid_probe_fnty = ir.FunctionType(c.types.void, cpuid_probe_args)
             func_cpuid_probe = ir.Function(mod, cpuid_probe_fnty,
                                            name="cpuid_probe")
+            func_cpuid_probe.attributes.add('noinline') # this is for debug
             block = func_cpuid_probe.append_basic_block(name="entry")
             builder = ir.IRBuilder(block)
             arg = builder.alloca(i32)
+            self._ctx.init_alloca(builder, arg)
             builder.store(func_cpuid_probe.args[0], arg)
             fty = ir.FunctionType(ir.LiteralStructType([i32, i32, i32, i32]),
                                   (i32, i32))
 
-            # This is supposed to be the following
+            # TODO: Fix/investigate this...
+            # This is supposed be the thing to do for PIC and should be the
+            # equivalent to the following inline asm in C, however, it seemingly
+            # causes segfaults.
             "xchg{l}\t{%%}ebx, %1\n\t"
             "cpuid\n\t"
             "xchg{l}\t{%%}ebx, %1\n\t"
-            asm_str = ("xchg$(l$)\t$(%$)ebx, $1\n\t"
-                       "cpuid\n\t"
-                       "xchg$(l$)\t$(%$)ebx, $1\n\t")
-            reg_info = ("={ax},=r,={cx},={dx},{ax},{cx},"
-                        "~{dirflag},~{fpsr},~{flags}")
+            # asm_str = ("xchg$(l$)\t$(%$)ebx, $1\n\t"
+            #            "cpuid\n\t"
+            #            "xchg$(l$)\t$(%$)ebx, $1\n\t")
+            # reg_info = ("={ax},=r,={cx},={dx},{ax},{cx},"
+            #             "~{dirflag},~{fpsr},~{flags}")
+            #
+            # This is the non-PIC version, which seems to work ok.
+            asm_str = "cpuid\n\t"
+            reg_info ="={ax},={bx},={cx},={dx},{ax},{cx},~{dirflag},~{fpsr},~{flags}"
             result = builder.asm(fty, asm_str, reg_info,
                                  (builder.load(arg), ir.Constant(i32, 0)),
                                  False, name="asm_cpuid")
@@ -283,28 +313,30 @@ class x86CPUSelector(Selector):
             # end cpuid_probe
 
         # stage call to cpuid_probe with arg 0
+        self.debug_print(builder, "Staging cpuid probe")
         i32_zero = ir.Constant(i32, 0)
         func_cpuid_probe = gen_cpuid_probe(builder.module)
         r0to4 = [builder.alloca(i32) for _ in range(4)]
+        [self._ctx.init_alloca(builder, x) for x in r0to4]
         builder.call(func_cpuid_probe, (i32_zero, *r0to4))
 
         # This might come back as zero on (assumably) v. old machines.
         pred = builder.icmp_signed("==", builder.load(r0to4[0]), i32_zero)
         with builder.if_then(pred):
-            self.debug_print(builder, "Have MMX")
-            self.debug_print(builder, "Have SSE")
-            self.debug_print(builder, "Have SSE2")
+            self.debug_print(builder, "Have MMX\n")
+            self.debug_print(builder, "Have SSE\n")
+            self.debug_print(builder, "Have SSE2\n")
             # if 64bit then this is likely...
-            self.debug_print(builder, "Have SSE3")
+            self.debug_print(builder, "Have SSE3\n")
             # return early selecting the baseline
             self._select(builder, 'baseline')
+            self.debug_print(builder, "Early return with baseline\n")
             builder.ret_void()
 
         # Stage call to cpuid_probe with arg 1 and search
         i32_one = ir.Constant(i32, 1)
         [builder.store(i32_zero, x) for x in r0to4]
         builder.call(func_cpuid_probe, (i32_one, *r0to4))
-
         older_instructions = [("MMX   ", 23, 3),
                               ("SSE   ", 25, 3),
                               ("SSE2  ", 26, 3),
@@ -365,6 +397,7 @@ class x86CPUSelector(Selector):
         i64 = langref.types.i64
         features_vect = builder.alloca(i64,
                                        name="cpu_features_vect")
+        self._ctx.init_alloca(builder, features_vect)
         builder.store(ir.Constant(i64, 0x0), features_vect)
 
         for k, v in non_avx_call_map.items():
@@ -382,7 +415,9 @@ class x86CPUSelector(Selector):
         # this is a flag to indicate that some variant matched so don't use
         # the default, 0 = no match, !0 = match.
         found = builder.alloca(i8, name="found")
+        self._ctx.init_alloca(builder, found)
         builder.store(ir.Constant(i8, 0), found)
+
 
         fv = builder.load(features_vect)
 
@@ -391,6 +426,60 @@ class x86CPUSelector(Selector):
             return tuple(cpu_dispatchable.__members__.keys()).index(feat)
 
         variant_order = sorted(list(supplied_variants), key=cpu_release_order)
+
+        # This is an "escape hatch" for debug etc whereby the ISA is picked from
+        # the environment variable PIXIE_USE_ISA (if it has been set).
+        # TODO: use secure_getenv if available
+        PIXIE_USE_ISA_env_var_str = self._ctx.insert_const_string(builder.module,
+                                        "PIXIE_USE_ISA")
+        # this returns a char * to the env var contents, or NULL if no match
+        PIXIE_USE_ISA_value = c.stdlib.getenv(builder,
+                                              PIXIE_USE_ISA_env_var_str)
+        envvar_set_pred = builder.not_(
+            self._ctx.is_null(builder, PIXIE_USE_ISA_value))
+        self.debug_print(builder, f"Testing for env var dispatch.\n")
+        with builder.if_else(envvar_set_pred, likely=False) as (then, otherwise):
+            with then:
+                self.debug_print(builder, f"Using env var dispatch.\n")
+                # TODO: this is like the env var selector impl, could that be used?
+                for specific_feature in variant_order:
+                    zero = ir.Constant(c.types.int, 0)
+                    max_len = ir.Constant(c.stddef.size_t, 255)
+                    feature_name_str = self._ctx.insert_const_string(builder.module,
+                                            specific_feature)
+                    len_feature_name_str = c.stddef.size_t(len(specific_feature))
+                    strcmp_res = c.string.strncmp(builder, PIXIE_USE_ISA_value,
+                                                feature_name_str,
+                                                max_len)
+                    pred = builder.icmp_signed("==", strcmp_res, zero)
+                    with builder.if_then(pred):
+                        msg = f"Using version from env var: PIXIE_USE_ISA=%s\n"
+                        self.debug_print(builder, msg, PIXIE_USE_ISA_value)
+                        self._select(builder, specific_feature)
+                        # mark having found a suitable match
+                        builder.store(ir.Constant(i8, 1), found)
+                        builder.ret_void()
+
+                # check that a match was found and abort otherwise
+                pred = builder.icmp_unsigned("==", builder.load(found),
+                                                ir.Constant(i8, 0))
+                with builder.if_then(pred, likely=False):
+                    message = (f"No matching library is available for ISA \"%s\" "
+                                "supplied via environment variable PIXIE_USE_ISA.\n"
+                                "\nThis error is unrecoverable and the program "
+                                "will now exit. Try checking that the supplied ISA "
+                                "is valid and then rerun.\n")
+                    error_message = self._ctx.insert_const_string(builder.module,
+                                                                message)
+                    c.stdio.printf(builder, error_message, PIXIE_USE_ISA_value)
+                    # call sigabrt.
+                    self.debug_print(builder, "calling exit")
+                    c.stdlib.exit(builder, c.sysexits.EX_SOFTWARE)
+                    builder.ret_void()
+            with otherwise:
+                self.debug_print(builder, f"No env var set.\n")
+
+        # The env var escape hatch wasn't used so do the standard dispatch
         for specific_feature in variant_order:
             disp_feat = ir.Constant(i64,
                                     cpu_dispatchable[specific_feature].value)
@@ -398,9 +487,9 @@ class x86CPUSelector(Selector):
             pred = builder.icmp_unsigned("==", mask, disp_feat)
             with builder.if_else(pred) as (then, otherwise):
                 with then:
-                    self._select(builder, specific_feature)
                     msg = f"branch checking {specific_feature}: Success\n"
                     self.debug_print(builder, msg)
+                    self._select(builder, specific_feature)
                     builder.store(ir.Constant(i8, 1), found)
                 with otherwise:
                     msg = f"branch checking {specific_feature}: Failed\n"

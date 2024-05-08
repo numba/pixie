@@ -51,7 +51,7 @@ class TestBasicDSO(PixieTestCase):
         tus.append(TranslationUnit("llvm_foo_i64_i64",
                                    llvm_foo_i64_i64))
 
-        export_config = ExportConfiguration('embed_dso')
+        export_config = ExportConfiguration()
         export_config.add_symbol(python_name='foo',
                                  symbol_name='_Z3fooPlS_',
                                  signature='void(i64*, i64*, i64*)',)

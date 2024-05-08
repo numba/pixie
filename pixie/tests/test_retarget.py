@@ -28,7 +28,7 @@ class TestInstructionSetRetarget(PixieTestCase):
         tus = (TranslationUnit("llvm_foo_double_double",
                                llvm_foo_double_double),)
 
-        export_config = ExportConfiguration('embed_dso')
+        export_config = ExportConfiguration()
         export_config.add_symbol(python_name='foo',
                                  symbol_name='_Z3fooPdS_',
                                  signature='void(double*, double*, double*)',)

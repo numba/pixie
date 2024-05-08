@@ -75,8 +75,18 @@ class ElfMapper(object):
         dso_dtor_entry_block = dso_dtor_fn.append_basic_block('entry_block')
         dso_dtor_builder = ir.IRBuilder(dso_dtor_entry_block)
         _handle = self._mod.get_global(self._embedded_libhandle_name)
+        # In the common case, the handle needs closing as the embedded library
+        # successfully loaded. However, there is the possibility that the
+        # constructor failed to load the embedded library and the handle is
+        # NULL, in this case, do not attempt to dlclose the library.
+
         # dlclose the handle
-        c.dlfcn.dlclose(dso_dtor_builder, dso_dtor_builder.load(_handle))
+        deref_handle = dso_dtor_builder.load(_handle)
+        pred = dso_dtor_builder.not_(self._ctx.is_null(dso_dtor_builder,
+                                                       deref_handle))
+        with dso_dtor_builder.if_then(pred, likely=True):
+            c.dlfcn.dlclose(dso_dtor_builder, deref_handle)
+
         # destroy the file system resources
         _EXTRACTED_FILEPATH_as_charptr = dso_dtor_builder.bitcast(
             dso_handler.EXTRACTED_FILEPATH, c.types.charptr)
@@ -133,7 +143,7 @@ def load_library(builder, ctx, file_path, handle_cache):
             # the handle
             libhandle = c.dlfcn.dlopen(builder, file_path,
                                     builder.or_(c.dlfcn.RTLD_NOW,
-                                                c.dlfcn.RTLD_GLOBAL))
+                                                c.dlfcn.RTLD_LOCAL))
             builder.store(libhandle, handle_cache)
         with otherwise:
             libhandle = builder.load(handle_cache)
@@ -162,6 +172,7 @@ def apply_selector(builder, binaries, selector_class):
     as a tuple of (number of bytes, the bytes)."""
     # START THE selector PART
     # create the selector site
+    ctx = Context()
     disp = selector_class(builder.module,
                           f"pixie_selector_{selector_class.__name__}",
                           binaries)
@@ -170,7 +181,9 @@ def apply_selector(builder, binaries, selector_class):
     # create a couple of pointers that will be written to with the functions
     # that return the size and the data from the selected embedded module.
     nbytes_fn_ptr = builder.alloca(c.types.voidptr)
+    ctx.init_alloca(builder, nbytes_fn_ptr)
     get_bytes_fn_ptr = builder.alloca(c.types.voidptr)
+    ctx.init_alloca(builder, get_bytes_fn_ptr)
 
     # call the selector
     builder.call(disp_fn, (nbytes_fn_ptr, get_bytes_fn_ptr))
@@ -365,6 +378,7 @@ class mkstempEmbeddedDSOHandler(EmbeddedDSOHandler):
     def create(self, builder, thebytes, nbytes):
         # allocate a filepath slot
         file_path = builder.alloca(c.types.char, self.NAME_MAX)
+        self._ctx.init_alloca(builder, file_path)
 
         # memset filepath slot to nul
         c.string.memset(builder, file_path, ir.Constant(c.types.int, 0),

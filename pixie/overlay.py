@@ -11,10 +11,9 @@ def address_of_symbol(DSO, symbol_name):
     return getattr(DSO, symbol_name)  # Fix this
 
 
-def get_bitcode(DSO, obj):
-    mod_name = obj.__name__
-    sz_name = f"get_bitcode_for_{mod_name}_size"
-    data_name = f"get_bitcode_for_{mod_name}"
+def get_bitcode(DSO):
+    sz_name = f"get_bitcode_for_self_size"
+    data_name = f"get_bitcode_for_self"
     sz_fptr = getattr(DSO, sz_name)
     sz_fptr.argtypes = ()
     sz_fptr.restype = ctypes.c_long
@@ -49,7 +48,7 @@ def specialize(obj):
         module = obj
         outdir = os.path.split(module.__file__)[0]
 
-        export_config = ExportConfiguration('embed_dso')
+        export_config = ExportConfiguration()
 
         tus = (TranslationUnit("self", bitcode),)
 
@@ -72,10 +71,17 @@ def specialize(obj):
                             uuid=obj.__PIXIE__['uuid'],
                             output_dir=outdir)
         lib.compile()
-        dso = os.path.join(lib._output_dir, lib._output_file)
-        print(f"Writing specialized library to {dso}.")
+        dso = os.path.join(lib._output_dir, lib._library_name)
+        print(f"Writing specialized library: {dso}.")
 
     return impl
+
+
+def selected_isa(dso):
+    dso.get_selected_dso.argtypes = ()
+    dso.get_selected_dso.restype = ctypes.c_char_p
+    selected = dso.get_selected_dso().decode()
+    return selected
 
 
 def bootstrap(obj):
@@ -148,8 +154,9 @@ def main(PIXIE_payload, obj):
                 vdict['cfunc'] = ctbinding(address)
                 tmp[variant] = vdict
             data['feature_variants'] = tmp
-    pixie_dict_raw['bitcode'] = fns["get_bitcode"](DSO, obj)
+    pixie_dict_raw['bitcode'] = fns["get_bitcode"](DSO)
     pixie_dict_raw['specialize'] = fns["specialize"](obj)
+    pixie_dict_raw['selected_isa'] = fns["selected_isa"](DSO)
 
     # Write in overlay
     obj.__PIXIE__ = pixie_dict_raw
@@ -193,6 +200,7 @@ def create_base_payload():
         inspect.getsource(address_of_symbol)
     PIXIE_assemblers['bootstrap'] = inspect.getsource(bootstrap)
     PIXIE_assemblers['specialize'] = inspect.getsource(specialize)
+    PIXIE_assemblers['selected_isa'] = inspect.getsource(selected_isa)
 
     return {'__PIXIE__': PIXIE_dunder,
             '__PIXIE_assemblers__': PIXIE_assemblers}

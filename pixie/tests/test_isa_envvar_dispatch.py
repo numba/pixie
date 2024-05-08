@@ -1,9 +1,13 @@
 from pixie import PIXIECompiler, TranslationUnit, ExportConfiguration
-from pixie.tests.support import PixieTestCase
+from pixie.tests.support import PixieTestCase, import_dynamic, needs_subprocess
 from pixie.cpus import x86
+from pixie.mcext import c
 from numpy.core._multiarray_umath import __cpu_features__
 import ctypes
+import os
 import unittest
+import subprocess
+import sys
 
 llvm_foo_double_double = """
     define void @"_Z3fooPdS_"(double* %".1", double* %".2", double* %".out")
@@ -18,8 +22,9 @@ llvm_foo_double_double = """
     """
 
 
-class TestIsaDispatch(PixieTestCase):
-    """Tests that a PIXIE library will do ISA based dispatch"""
+class TestIsaEnvVarDispatch(PixieTestCase):
+    """Tests that a PIXIE library will do ISA based dispatch using the env
+    var override"""
 
     @classmethod
     def setUpClass(cls):
@@ -48,8 +53,11 @@ class TestIsaDispatch(PixieTestCase):
 
         libfoo.compile()
 
-    def test_dispatch(self):
-
+    @PixieTestCase.run_test_in_subprocess(envvars={"PIXIE_USE_ISA":"SSE2"})
+    def test_envar_dispatch_valid(self):
+        # Checks that PIXIE will dispatch so a given ISA env var, it's highly
+        # unlikely to find a machine that just supports SSE2 and so this is
+        # used as the test value.
         with self.load_pixie_module('foo_library') as foo_library:
             out = ctypes.c_double(0)
             foo_data = foo_library.__PIXIE__['symbols']['foo']
@@ -68,15 +76,46 @@ class TestIsaDispatch(PixieTestCase):
 
             selected_isa = foo_library.__PIXIE__['selected_isa']
 
-            highest_feature = None
-            targets_features_strings = [str(x).upper() for x in
-                                        self._targets_features]
-            for isa, present in __cpu_features__.items():
-                if present and isa.upper() in targets_features_strings:
-                    highest_feature = isa
+            assert selected_isa == "SSE2"
 
-            assert highest_feature is not None
-            assert highest_feature == selected_isa
+    @needs_subprocess
+    def test_impl_envar_dispatch_invalid(self):
+        # Checks that PIXIE will dispatch so a given ISA env var, it's highly
+        # unlikely to find a machine that just supports SSE2 and so this is
+        # used as the test value.
+        with self.load_pixie_module('foo_library') as foo_library:
+            out = ctypes.c_double(0)
+            foo_data = foo_library.__PIXIE__['symbols']['foo']
+            foo_sym = foo_data['void(double*, double*, double*)']
+            cfunc = foo_sym['cfunc']
+
+            # first run sets up the fnptr cache
+            cfunc(ctypes.byref(ctypes.c_double(20.)),
+                  ctypes.byref(ctypes.c_double(10.)), ctypes.byref(out))
+
+    def test_envvar_dispatch_invalid(self):
+        themod = self.__module__
+        thecls = type(self).__name__
+        parts = (themod, thecls, "test_impl_envar_dispatch_invalid")
+        fully_qualified_test = '.'.join(x for x in parts if x is not None)
+        env = os.environ.copy()
+        bad_isa = "NONSENSE"
+        env["PIXIE_USE_ISA"] = bad_isa
+        env["SUBPROC_TEST"] = "1"
+
+        capture = []
+        with self.assertRaises(AssertionError) as raises:
+            self.run_in_subprocess(fully_qualified_test,
+                                   flags=['-m', 'unittest'],
+                                   env=env)
+        out, err, retcode = raises.exception.args[1:]
+        assert retcode == c.sysexits.EX_SOFTWARE.constant
+        self.assertIn(f"No matching library is available for ISA \"{bad_isa}\"",
+                      out.decode())
+        assert err == b""
+
+
+
 
 
 if __name__ == '__main__':

@@ -1,31 +1,106 @@
+from types import MappingProxyType
+from abc import ABC, abstractmethod
+from collections.abc import Iterable
 from collections import defaultdict, namedtuple
-import io
-import os
-import pprint
-import sys
-import tempfile
-from llvmlite import binding as llvm
-from llvmlite import ir
-from llvmlite.binding import Linkage
-import json
-import zlib
 import uuid
+import tempfile
+import os
+import zlib
+import json
+import sys
 
-from pixie.platform import Toolchain
-from pixie.codegen_helpers import Context, Codegen, _module_pass_manager
+from llvmlite import ir
+from llvmlite.ir.values import GlobalValue
+from llvmlite import binding as llvm
 from pixie.compiler_lock import compiler_lock
-from pixie.selectors import PyVersionSelector, x86CPUSelector
-from pixie.dso_tools import ElfMapper, shmEmbeddedDSOHandler
-from pixie import types, cpus
+from pixie import cpus, types, pyapi, overlay
+from pixie.codegen_helpers import Codegen, Context, _module_pass_manager
+from pixie.platform import Toolchain
+from pixie.selectors import x86CPUSelector
+from pixie.dso_tools import (ElfMapper, shmEmbeddedDSOHandler,
+                             mkstempEmbeddedDSOHandler)
+from pixie.mcext import c
 from pixie import llvm_types as lt
-from pixie import overlay, pyapi
 
 
-NULL = ir.Constant(lt._void_star, None)
-ZERO = ir.Constant(lt._int32, 0)
-ONE = ir.Constant(lt._int32, 1)
-MINUS_ONE = ir.Constant(lt._int32, -1)
-METH_VARARGS_AND_KEYWORDS = ir.Constant(lt._int32, 1 | 2)
+IS_LINUX = sys.platform.startswith('linux')
+
+
+class SimpleCompiler():
+    # takes llvm_ir, compiles it to an object file
+    def __init__(self, target_cpu, target_features):
+        self._target_cpu = target_cpu
+        self._target_features = target_features
+
+    def compile(self, sources, opt=0):
+        # takes sources, returns object files
+        objects = []
+        codegen = Codegen(str(uuid.uuid4().hex),
+                          cpu_name=self._target_cpu,
+                          target_features=self._target_features)
+
+        if isinstance(sources, (str, bytes, llvm.module.ModuleRef)):
+            sources = (sources,)
+
+        for source in sources:
+            codelibrary = codegen.create_library(uuid.uuid4().hex)
+            if isinstance(source, str):
+                mod = llvm.parse_assembly(source)
+            elif isinstance(source, bytes):
+                mod = llvm.parse_bitcode(source)
+            elif isinstance(source, llvm.module.ModuleRef):
+                mod = source
+            else:
+                assert 0, f"Unknown source type {type(source)}"
+            codelibrary.add_llvm_module(mod)
+            # TODO: wire in loop and slp vectorize
+            mpm = _module_pass_manager(codegen._tm,
+                                       opt=opt,
+                                       loop_vectorize=False,
+                                       slp_vectorize=False)
+            # TODO: Comment out this line and everything segfaults
+            # See addition of write to global of the selected thing as a string
+            # in Selector::_select.
+            mpm.run(codelibrary._final_module)
+
+            objects.append(codelibrary.emit_native_object())
+            del codelibrary
+        return tuple(objects)
+
+
+class SimpleLinker():
+
+    def __init__(self):
+        self._toolchain = Toolchain()
+    # takes object files and links them into a binary
+    def link(self, objects, outfile='a.out'):
+        # linker requires objects serialisd onto disk
+        with tempfile.TemporaryDirectory() as build_dir:
+            objfiles = []
+            for obj in objects:
+                ntf = os.path.join(build_dir, f"{uuid.uuid4().hex}.o")
+                with open(ntf, 'wb') as f:
+                    f.write(obj)
+                objfiles.append(ntf)
+
+            libraries = self._toolchain.get_python_libraries()
+            library_dirs = self._toolchain.get_python_library_dirs()
+            self._toolchain.link_shared(outfile,
+                                        objfiles,
+                                        libraries,
+                                        library_dirs,)
+
+
+class SimpleCompilerDriver():
+    # like e.g. clang or gcc, compiles and links source translation units to
+    # a DSO.
+    def __init__(self, target_cpu, target_features):
+        self._compiler = SimpleCompiler(target_cpu, target_features)
+        self._linker = SimpleLinker()
+
+    def compile_and_link(self, sources, opt=0, outfile='a.out'):
+        objects = self._compiler.compile(sources, opt=opt)
+        return self._linker.link(objects, outfile=outfile)
 
 
 _pixie_export = namedtuple('_pixie_export',
@@ -49,146 +124,211 @@ class TranslationUnit():
 
 class ExportConfiguration():
 
-    def __init__(self, versioning_strategy='embed_dso'):
-        if versioning_strategy != 'embed_dso':
-            msg = "The only supported versioning strategy is 'embed_dso'"
-            raise ValueError(msg)
-        # strategy might be one of: 'privatise' | 'embed_dso' | 'trampoline'
-        self.versioning_strategy = versioning_strategy
+    def __init__(self):
         self._data = []
 
     def add_symbol(self, symbol_name, python_name, signature, metadata=None):
         self._data.append(_pixie_export(symbol_name, python_name, signature,
                                         metadata))
 
+class PIXIECompiler():
+    def __init__(self, library_name=None,
+                       translation_units=(),
+                       export_configuration=None,
+                       baseline_cpu='nocona',
+                       baseline_features=(),
+                       targets_features=(),
+                       python_cext=True,
+                       uuid=None,
+                       opt=3,
+                       output_dir='.'):
+        self._library_name = library_name
+        self._translation_units = translation_units
+        self._export_configuration = export_configuration
+        self._baseline_cpu = baseline_cpu
+        self._baseline_features = baseline_features
+        self._targets_features = targets_features
+        self._python_cext = python_cext
+        self._uuid = uuid
+        self._opt = opt
+        self._output_dir = output_dir
 
-# NOTE: This is based on:
-# https://github.com/numba/numba/blob/04ebc63fe1dd1efd5a68cc9caf8f245404d99fa7/numba/pycc/cc.py#L19
-class PIXIECompiler(object):  # cf. CC.
+    def compile(self):
+        ir_mod = ir.Module()
+        # TODO: sort this out for x-compile.
+        ir_mod.triple = llvm.get_process_triple()
+
+        pixie_mod = PIXIEModule(self._library_name, self._translation_units,
+                                self._export_configuration,
+                                self._baseline_cpu, self._baseline_features,
+                                targets_features=self._targets_features,
+                                uuid=self._uuid)
+        # always set the bitcode to be emitted
+        # set the wiring method based on platform
+        wiring = "ifunc" if IS_LINUX else "trampoline"
+        pixie_mod.generate_ir(ir_mod, python_cext=self._python_cext,
+                              wiring=wiring)
+
+        compiler = SimpleCompilerDriver(self._baseline_cpu,
+                                        cpus.Features(self._baseline_features),)
+        output_file = compiler._linker._toolchain.get_ext_filename(
+            self._library_name)
+        outpath = os.path.join(self._output_dir, output_file)
+        compiler.compile_and_link(str(ir_mod), opt=self._opt, outfile=outpath)
+
+
+class IRGenerator(ABC):
+
+    @abstractmethod
+    def generate_ir(mod):
+        pass
+
+
+class PIXIEModule(IRGenerator):
 
     def __init__(self, library_name, translation_units, export_configuration,
                  baseline_cpu, baseline_features, targets_features=(),
-                 python_cext=True, uuid=None, output_dir="."):
-        self._extension_name = library_name
-        self._exported_functions = dict()
-        self._basename = library_name
-        self._uuid = uuid
+                 uuid=None):
+        self._library_name = library_name
+        self._baseline_cpu = baseline_cpu
+        self._baseline_features = baseline_features
         self._targets_features = targets_features
-        if targets_features:
-            # baseline must not be greater than any target, as such a target
-            # could potentially never be run as there may be no set of
-            # instructions capable of link loading it.
-            if baseline_features > min(targets_features):
-                # TODO check ISA enum is the same for all features, i.e. can't
-                # mix x86 and ARM.'
-                msg = (f"Baseline feature {baseline_features} exceeds minimum "
-                       f"target feature ({min(targets_features)})")
-                raise ValueError(msg)
+        self._uuid = uuid
 
-        # Resolve source module name and directory
-        f = sys._getframe(1)
-        dct = f.f_globals
-        if output_dir is None:
-            self._source_path = dct.get('__file__', '')
-            # By default, output in directory of caller module
-            self._output_dir = os.path.dirname(self._source_path)
-        else:
-            assert os.path.isdir(output_dir)
-            self._output_dir = output_dir
-
-        self._toolchain = Toolchain()
-        _output_file = self._toolchain.get_ext_filename(self._extension_name)
-        self._output_file = _output_file
-        self._verbose = False
-        self._function_table = defaultdict(list)
-
-        if baseline_features is None:
-            self._baseline_features = ()
-        else:
-            self._baseline_features = baseline_features
-
-        if baseline_cpu is None:
-            self._baseline_features = llvm.get_host_cpu_name()
-        else:
-            self._baseline_cpu = baseline_cpu
-
-        self._exported_symbols = defaultdict(list)
+        # convert translation units to a single module
         llvm_irs = [x._source for x in translation_units
                     if isinstance(x._source, str)]
         llvm_bcs = [x._source for x in translation_units
                     if isinstance(x._source, bytes)]
-        self._sources = {'llvm_ir': llvm_irs, 'llvm_bc': llvm_bcs}
+        self._user_source = {'llvm_ir': llvm_irs, 'llvm_bc': llvm_bcs}
 
+        def _combine_sources():
+            # don't create a new module for single source, this matters,
+            # particularly for bitcode where a respecialization of a module
+            # should embed the exact same bitcode as used to create the
+            # original. A reparse of the bitcode can produce a valid but not
+            # identical bitcode as to what was inputted.
+            if (len(self._user_source['llvm_ir']) == 1 and
+                len(self._user_source['llvm_bc']) == 0):
+                llvm_ir = self._user_source['llvm_ir'][0]
+                self._single_mod = llvm.parse_assembly(llvm_ir)
+                self._single_source = str(self._single_mod)
+                self._single_bitcode = self._single_mod.as_bitcode()
+            if (len(self._user_source['llvm_ir']) == 0 and
+                len(self._user_source['llvm_bc']) == 1):
+                bc = self._user_source['llvm_bc'][0]
+                self._single_mod = llvm.parse_bitcode(bc)
+                self._single_source = str(self._single_mod)
+                self._single_bitcode = bc
+                return
+
+            tmp_mod = ir.Module("tmp")
+            # TODO: fix for x-compile
+            tmp_mod.triple = llvm.get_process_triple()
+            ir_module = llvm.parse_assembly(str(tmp_mod))
+            mods = []
+            for src in self._user_source['llvm_ir']:
+                mods.append(llvm.parse_assembly(src))
+            for src in self._user_source['llvm_bc']:
+                mods.append(llvm.parse_bitcode(src))
+            # link into main module
+            for mod in mods:
+                ir_module.link_in(mod)
+
+            self._single_mod = ir_module
+            self._single_source = str(self._single_mod)
+            self._single_bitcode = self._single_mod.as_bitcode()
+
+        _combine_sources()
+
+        # get exports
+        self._exported_symbols = defaultdict(list)
         for d in export_configuration._data:
             self._exported_symbols[d.python_name].append((d.symbol_name,
                                                           d.signature,
                                                           d.metadata))
 
-        self._python_cext = python_cext
-
-    def __repr__(self):
-        with io.StringIO() as buf:
-            pprint.pprint(self._function_table, stream=buf)
-            return buf.getvalue()
-
-    @property
-    def _export_entries(self):
-        return sorted(self._exported_functions.values(),
-                      key=lambda entry: entry.symbol_name)
-
-    def _get_extra_ldflags(self):
-        return ()
-
     @compiler_lock
-    def _compile_feature_specific_dsos(self, build_dir, syms):
+    def _compile_feature_specific_dsos(self,):
         # this returns a map of feature: dso compiled against that feature
         binaries = {}
         all_features = set(self._targets_features) | {self._baseline_features,}
         for feature in all_features:
             cpu_feature = cpus.Features(feature)
-            bfeat = self._baseline_features
-            compiler = FeatureSpecificCompiler(self._basename,
-                                            self._extension_name,
-                                            syms,
-                                            self._sources,
-                                            baseline_cpu=self._baseline_cpu,
-                                            baseline_features=bfeat,
-                                            features=cpu_feature)
-            hashed = hash(tuple([hash(sym) for sym in syms]))
-            hashed_name = f'{hashed}_{cpu_feature.as_selected_feature_flags}.o'
-            obj_fname = os.path.splitext(self._output_file)[0] + hashed_name
-            temp_obj = os.path.join(build_dir, obj_fname)
-            compiler.write_native_object(temp_obj, wrap=True)
-            # there's now an ISA specific object file at path temp_obj.
-            objects = (temp_obj,)
-            hashed_libname = f'{hashed}_{cpu_feature.as_selected_feature_flags}.so'
-            extra_ldflags = self._get_extra_ldflags()
-            output_dll = os.path.join(self._output_dir, hashed_libname)
-            libraries = self._toolchain.get_python_libraries()
-            library_dirs = self._toolchain.get_python_library_dirs()
-            self._toolchain.link_shared(output_dll, objects,
-                                        libraries, library_dirs,
-                                        export_symbols=compiler.dll_exports,
-                                        extra_ldflags=extra_ldflags)
-            with open(output_dll, 'rb') as f:
-                binaries[str(feature).upper()] = f.read()
-
+            # bfeat = self._baseline_features
+            compiler = SimpleCompilerDriver(self._baseline_cpu, cpu_feature)
+            with tempfile.TemporaryDirectory() as build_dir:
+                outfile = os.path.join(build_dir, str(uuid.uuid4().hex))
+                compiler.compile_and_link(self._single_source, outfile=outfile)
+                with open(outfile, 'rb') as f:
+                    binaries[str(feature).upper()] = f.read()
         return binaries
 
-    def _generate_dispatch(self, build_dir, syms, selector_class, dso_handler):
-        mod = ir.Module()
-        mod.triple = llvm.get_process_triple()
-        emap = ElfMapper(mod)
 
-        binaries = self._compile_feature_specific_dsos(build_dir, syms)
-        binaries['baseline'] = binaries[min(binaries.keys())]
-        # create the DSO constructor, it does the select and dispatch
-        emap.create_dso_ctor(binaries, selector_class, dso_handler)
-        # create the DSO destructor, it cleans up the resources used by the
-        # create_dso_ctor.
-        emap.create_dso_dtor(dso_handler)
+    def create_real_ifuncs(self, mod, embedded_libhandle_name):
 
-        return mod, emap
+        class IFunc(GlobalValue):
+            """
+            An IFunc
+            """
+
+            def __init__(self, module, name, IFuncTy, resolver_name):
+                assert isinstance(IFuncTy, ir.types.FunctionType)
+                super(IFunc, self).__init__(module, IFuncTy.as_pointer(),
+                                                    name=name)
+                self.value_type = IFuncTy
+                self.initializer = None
+                resolver_ty = ir.FunctionType(IFuncTy.as_pointer(), ())
+                self.resolver_value_type = resolver_ty
+                self.resolver_name = resolver_name
+                self.linkage = None
+                self.parent.add_global(self)
+
+            def descr(self, buf):
+
+                if self.linkage is None:
+                    # Default to no dso_local linkage
+                    linkage = 'dso_local'
+                else:
+                    linkage = self.linkage
+                if linkage:
+                    buf.append(linkage + " ")
+                buf.append("ifunc ")
+                buf.append(f"{self.value_type}, ")
+                buf.append(f"{self.resolver_value_type}* ")
+                buf.append(f"@{self.resolver_name}")
+                buf.append("\n")
+
+        DEBUG = False
+        ctx = Context()
+        if DEBUG:
+            def printf(builder, *args):
+                ctx.printf(builder, *args)
+        else:
+            def printf(builder, *args):
+                pass
+
+        # creates the ifunc-like behaviour for the exported symbols
+        _handle = mod.get_global(embedded_libhandle_name)
+        for python_name, symsigs in self._exported_symbols.items():
+            for symbol_name, sig, metadata in symsigs:
+                pixie_sig = types.Signature(sig)
+                fnty = pixie_sig.as_llvm_function_type()
+                resolver_function_name = f"resolver_for_{symbol_name}"
+                ifunc = IFunc(mod, symbol_name, fnty, resolver_function_name)
+                resolver = ir.Function(mod, ifunc.resolver_value_type,
+                                       resolver_function_name)
+                resolver_entry_block = resolver.append_basic_block('entry_block')
+                resolver_builder = ir.IRBuilder(resolver_entry_block)
+                # This needs to dlsym
+                dso = resolver_builder.load(_handle)
+                printf(resolver_builder, "dso is at %d\n", dso)
+                const_symbol_name = ctx.insert_const_string(mod, symbol_name)
+                sym = c.dlfcn.dlsym(resolver_builder, dso, const_symbol_name)
+                printf(resolver_builder, "called dlsym, %d\n", sym)
+                # cast void * to fnptr type
+                casted_sym = resolver_builder.bitcast(sym, fnty.as_pointer())
+                resolver_builder.ret(casted_sym)
 
     def create_fake_ifuncs(self, mod, embedded_libhandle_name):
         DEBUG = False
@@ -230,7 +370,6 @@ class PIXIECompiler(object):  # cf. CC.
                         # find the symbol
                         dso = builder.load(_handle)
                         printf(builder, "dso is at %d\n", dso)
-                        from pixie.mcext import c
                         const_symbol_name = ctx.insert_const_string(mod, symbol_name)
                         sym = c.dlfcn.dlsym(builder, dso, const_symbol_name)
                         printf(builder, "called dlsym, %d\n", sym)
@@ -244,181 +383,77 @@ class PIXIECompiler(object):  # cf. CC.
                 builder.call(fn, trampoline_fn.args)
                 builder.ret_void()
 
-    @compiler_lock
-    def _compile_object_files(self, build_dir):
-        # This compiles the numerous variants.
-        objects = []
-        dll_exports = []
+    def _embed_bitcode(self, mod):
+        ctx = Context()
+        bitcode = self._single_bitcode
 
+        bc_name = f'bitcode_for_self'
+        bitcode_const_bytes = ctx.insert_const_bytes(mod, bitcode, bc_name)
 
-        syms = []
-        for python_name, symsigs in self._exported_symbols.items():
-            for symbol_name, sig, metadata in symsigs:
-                syms.append(symbol_name)
+        fnty = ir.FunctionType(lt._void_star, [])
+        getter_name = f'get_bitcode_for_self'
+        fn = ir.Function(mod, fnty, getter_name)
+        bb = fn.append_basic_block()
+        fn_builder = ir.IRBuilder(bb)
+        fn_builder.ret(bitcode_const_bytes)
 
+        fnty = ir.FunctionType(lt._int64, [])
+        get_sz_name = f'get_bitcode_for_self_size'
+        fn = ir.Function(mod, fnty, get_sz_name)
+        bb = fn.append_basic_block()
+        fn_builder = ir.IRBuilder(bb)
+        fn_builder.ret(ir.Constant(lt._int64, len(bitcode)))
+
+    def generate_ir(self, mod, python_cext=True, wiring='trampoline',
+                    embed_bitcode=True):
+
+        binaries = self._compile_feature_specific_dsos()
+        binaries['baseline'] = binaries[min(binaries.keys())]
+
+        # create the DSO constructor, it does the select and dispatch
         selector_class = x86CPUSelector
         dso_handler = shmEmbeddedDSOHandler()
-        mod, emap = self._generate_dispatch(build_dir, syms, selector_class, dso_handler)
-        self.create_fake_ifuncs(mod, emap._embedded_libhandle_name)
+        emap = ElfMapper(mod)
+        emap.create_dso_ctor(binaries, selector_class, dso_handler)
+        # create the DSO destructor, it cleans up the resources used by the
+        # create_dso_ctor.
+        emap.create_dso_dtor(dso_handler)
 
-        # Currently set this to empty
-        feature = cpus.Features(())
-        bfeat = self._baseline_features
-        compiler = FeatureSpecificCompiler(self._basename,
-                                           self._extension_name,
-                                           syms,
-                                           # self._sources,
-                                           {'llvm_ir':[str(mod)],
-                                            'llvm_bc':[]},
-                                           baseline_cpu=self._baseline_cpu,
-                                           baseline_features=bfeat,
-                                           features=feature)
-        hashed = hash(tuple([hash(sym) for sym in syms]))
-        hashed_name = f'{hashed}_{feature.as_selected_feature_flags}.o'
-        obj_fname = os.path.splitext(self._output_file)[0] + hashed_name
-        temp_obj = os.path.join(build_dir, obj_fname)
-        compiler.write_native_object(temp_obj, wrap=True)
-        objects.append(temp_obj), dll_exports.extend(compiler.dll_exports)
+        if wiring == "trampoline":
+            self.create_fake_ifuncs(mod, emap._embedded_libhandle_name)
+        elif wiring == "ifunc":
+            self.create_real_ifuncs(mod, emap._embedded_libhandle_name)
+        else:
+            raise ValueError("wiring should be one of 'trampoline' or 'ifunc'")
 
-        return objects, dll_exports
+        if embed_bitcode:
+            self._embed_bitcode(mod)
 
-    @compiler_lock
-    def _compile_cext_object_file(self, build_dir, baseline_cpu,
-                                  baseline_features):
+        # TODO: Add strategy for augmenting an existing user supplied Py_Init
+        # with a PIXIE dict vs. creating a C-Ext from scratch.
+        if python_cext:
+            gen = PixieDictGenerator(self._library_name, self._exported_symbols,
+                                    uuid=self._uuid)
+            gen._emit_python_wrapper(mod)
 
-        compiler = ModuleCompiler(self._basename, self._extension_name,
-                                  self._exported_symbols, self._sources,
-                                  baseline_cpu=baseline_cpu,
-                                  baseline_features=baseline_features,
-                                  features=cpus.Features(()),
-                                  uuid=self._uuid)
-        obj_fname = os.path.splitext(self._output_file)[0] + '_meta.o'
-        temp_obj = os.path.join(build_dir, obj_fname)
-        compiler.write_native_object(temp_obj, wrap=True)
-        return [temp_obj], compiler.dll_exports
-
-    @compiler_lock  # cf. CC.compile
-    def compile(self):
-        """
-        Compile the extension module.
-        """
-        # Set this to true to see the link line(s)
-        self._toolchain.verbose = False
-
-        prefix = f'pixie-build-{self._basename}-'
-        with tempfile.TemporaryDirectory(prefix=prefix) as build_dir:
-
-            objects = []
-            dll_exports = []
-
-            # Compile object files for each feature set
-            feature_objects, feature_dll_exports = \
-                self._compile_object_files(build_dir)
-            objects.extend(feature_objects)
-            dll_exports.extend(feature_dll_exports)
-
-            # Compile the PIXIE meta object that adds all the PIXIE specific
-            # data into the DSO if the library needs to be a Python
-            # C-Extension.
-            if self._python_cext:
-                meta_obj, meta_dll_exports = self._compile_cext_object_file(
-                    build_dir, self._baseline_cpu, self._baseline_features)
-                objects.extend(meta_obj)
-                dll_exports.extend(meta_dll_exports)
-
-            # Then create shared library
-            extra_ldflags = self._get_extra_ldflags()
-            output_dll = os.path.join(self._output_dir, self._output_file)
-            libraries = self._toolchain.get_python_libraries()
-            library_dirs = self._toolchain.get_python_library_dirs()
-            self._toolchain.link_shared(output_dll, objects,
-                                        libraries, library_dirs,
-                                        export_symbols=dll_exports,
-                                        extra_ldflags=extra_ldflags)
-
-
-class _FeatureSpecificCompilerBase(object):
-    _DEBUG = False
-
-    def __init__(self, module_name, extension_name, syms, sources, **kwargs):
-
-        self._extension_name = extension_name
-        self._toolchain = Toolchain()
-        self._target_cpu = kwargs.pop('baseline_cpu')  # get from kwargs
-        self._target_features = kwargs.pop('features')  # get from kwargs
-        self.dll_exports = []
-        self._codegen = Codegen(self._extension_name,
-                                cpu_name=self._target_cpu,
-                                target_features=self._target_features)
-        self.module_name = module_name
-        self.context = Context()
-        self._syms = syms
-        self._sources = sources
-
-    def write_llvm_bitcode(self, output, **kws):
-        library = self._perform_export_of_entries()
-        with open(output, 'wb') as fout:
-            fout.write(library.emit_bitcode())
-
-    def write_native_object(self, output, **kws):
-        library = self._perform_export_of_entries()
-        with open(output, 'wb') as fout:
-            fout.write(library.emit_native_object())
-
-    def _perform_export_of_entries(self):
-        raise NotImplementedError
-
-    def _combine_sources(self, lib):
-        # TODO: add other handlers here
-        for src in self._sources['llvm_ir']:
-            mod = llvm.parse_assembly(src)
-            lib.add_llvm_module(mod)
-
-        for src in self._sources['llvm_bc']:
-            mod = llvm.parse_bitcode(src)
-            lib.add_llvm_module(mod)
-
-
-class FeatureSpecificCompiler(_FeatureSpecificCompilerBase):
-    def __init__(self, *args, **kwargs):
-        super(FeatureSpecificCompiler, self).__init__(*args, **kwargs)
-
-    @compiler_lock
-    def _perform_export_of_entries(self):
-        """Exports all the defined entries as mangled versions.
-        """
-        debug = False
-        tmp_lib = self._codegen.create_library(f"_tmp_lib_{str(uuid.uuid4())}")
-        # Combine the sources
-        self._combine_sources(tmp_lib)
-
-        pixie_lib = self._codegen.create_library(self.module_name)
-        pixie_lib.add_llvm_module(tmp_lib._final_module)
-
-        # mark the exports as external
-        for name in self._syms:
-            llvm_func = pixie_lib.get_function(name)
-            llvm_func.linkage = 'external'
-            self.dll_exports.append(name)
-
-        if debug:
-            print(pixie_lib.get_llvm_str())
-        # run opt!
-        mpm = _module_pass_manager(self._codegen._tm)
-        mpm.run(pixie_lib._final_module)
-        return pixie_lib
-
-
-class PyModuleDef_Slot(object):
-    Py_mod_create = ir.IntType(32)(1)
-    Py_mod_exec = ir.IntType(32)(2)
+        return mod
 
 
 # NOTE: This is based on:
 # https://github.com/numba/numba/blob/04ebc63fe1dd1efd5a68cc9caf8f245404d99fa7/numba/pycc/compiler.py#L308
 # https://github.com/numba/numba/blob/04ebc63fe1dd1efd5a68cc9caf8f245404d99fa7/numba/pycc/compiler.py#L80
 
-class ModuleCompiler(_FeatureSpecificCompilerBase):
+NULL = ir.Constant(lt._void_star, None)
+ZERO = ir.Constant(lt._int32, 0)
+ONE = ir.Constant(lt._int32, 1)
+MINUS_ONE = ir.Constant(lt._int32, -1)
+METH_VARARGS_AND_KEYWORDS = ir.Constant(lt._int32, 1 | 2)
+
+class PyModuleDef_Slot(object):
+    Py_mod_create = ir.IntType(32)(1)
+    Py_mod_exec = ir.IntType(32)(2)
+
+class PixieDictGenerator(object):
     """A base class to compile Python modules to a single shared library or
     extension module.
 
@@ -548,71 +583,11 @@ class ModuleCompiler(_FeatureSpecificCompilerBase):
 
     _DEBUG = False
 
-    def __init__(self, *args, **kwargs):
-        self._uuid = kwargs.pop('uuid', None)
-        super(ModuleCompiler, self).__init__(*args, **kwargs)
-
-    @compiler_lock
-    def _perform_export_of_entries(self):
-        """Exports all the defined meta entries.
-        """
-        pymod_library = self._codegen.create_library(self.module_name)
-
-        # sort out the bitcode for storage
-        tmp_lib = self._codegen.create_library("tmp")
-        self._combine_sources(tmp_lib)
-
-        # force exported symbols as external linkage
-        for python_name, symsigs in self._syms.items():
-            for sym, sig, metadata in symsigs:
-                llvm_func = tmp_lib.get_function(sym)
-                llvm_func.linkage = 'external'
-
-        # finalize
-        tmp_lib.finalize()
-
-        # Outline bitcode as const
-        bitcode = tmp_lib.emit_bitcode()
-        ir_mod = ir.Module()
-        bc_name = f'bitcode_for_{self.module_name}'
-        bitcode_const_bytes = self.context.insert_const_bytes(ir_mod,
-                                                              bitcode,
-                                                              bc_name)
-        fnty = ir.FunctionType(lt._void_star, [])
-        getter_name = f'get_bitcode_for_{self.module_name}'
-        fn = ir.Function(ir_mod, fnty, getter_name)
-        bb = fn.append_basic_block()
-        fn_builder = ir.IRBuilder(bb)
-        fn_builder.ret(bitcode_const_bytes)
-
-        fnty = ir.FunctionType(lt._int64, [])
-        get_sz_name = f'get_bitcode_for_{self.module_name}_size'
-        fn = ir.Function(ir_mod, fnty, get_sz_name)
-        bb = fn.append_basic_block()
-        fn_builder = ir.IRBuilder(bb)
-        fn_builder.ret(ir.Constant(lt._int64, len(bitcode)))
-
-        pymod_library.add_ir_module(ir_mod)
-
-        # Create the bootstrap wrapper
-        wrapper_module = pymod_library.create_ir_module("wrapper")
-        self._emit_python_wrapper(wrapper_module)
-        pymod_library.add_ir_module(wrapper_module)
-
-        # Hide all functions in the DLL except those explicitly exported
-        pymod_library.finalize()
-        for fn in pymod_library.get_defined_functions():
-            break  # TODO: Make this work correctly.
-            if fn.name not in self.dll_exports:
-                if fn.linkage in {Linkage.private, Linkage.internal}:
-                    # Private/Internal linkage must have "default" visibility
-                    fn.visibility = "default"
-                else:
-                    fn.visibility = 'hidden'
-        if self._DEBUG:
-            print(pymod_library.get_llvm_str())
-
-        return pymod_library
+    def __init__(self, module_name, syms, uuid=None):
+        self._uuid = uuid
+        self.context = Context()
+        self.module_name = module_name
+        self._syms = syms
 
     def _emit_method_array(self, llvm_module):
         """
@@ -910,4 +885,3 @@ class ModuleCompiler(_FeatureSpecificCompilerBase):
         PyModuleDef_Init_fn.linkage = 'external'
         ret = builder.call(PyModuleDef_Init_fn, (mod_def,))
         builder.ret(ret)
-        self.dll_exports.append(mod_init_fn.name)

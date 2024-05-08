@@ -119,6 +119,8 @@ class Context():
         ptr_fmt = builder.bitcast(global_fmt, cstring)
         return builder.call(fn, [ptr_fmt] + list(args))
 
+    def init_alloca(self, builder, slot):
+        builder.store(slot.type.pointee(None), slot)
 
 # NOTE: This is based on:
 # https://github.com/numba/numba/blob/04ebc63fe1dd1efd5a68cc9caf8f245404d99fa7/numba/core/codegen.py#L518
@@ -340,12 +342,10 @@ def create_pass_manager_builder(opt=2, loop_vectorize=False,
     return pmb
 
 
-def _pass_manager_builder(**kwargs):
-    opt_level = 3
-    loop_vectorize = 1
-    slp_vectorize = 1
+def _pass_manager_builder(opt=2, loop_vectorize=False, slp_vectorize=False,
+                          **kwargs):
 
-    pmb = create_pass_manager_builder(opt=opt_level,
+    pmb = create_pass_manager_builder(opt=opt,
                                       loop_vectorize=loop_vectorize,
                                       slp_vectorize=slp_vectorize,
                                       **kwargs)

@@ -180,6 +180,20 @@ def _mkstemp(builder, _template):
         fn = get_or_insert_function(builder.module, fnty, "libc.mkstemp")
         return builder.call(fn, (_template,))
 
+def _abort(builder,):
+    fnty = ir.FunctionType(c.types.void, ())
+    if builder.module.globals.get('libc.abort', None) is None:
+        fn = get_or_insert_function(builder.module, fnty, "libc.abort")
+        block = fn.append_basic_block('abort_impl')
+        local_builder = ir.IRBuilder(block)
+        c_fn = get_or_insert_function(builder.module, fnty, "abort")
+        local_builder.call(c_fn, *[fn.args,])
+        local_builder.unreachable()
+        return builder.call(fn, ())
+    else:
+        fn = get_or_insert_function(builder.module, fnty, "libc.abort")
+        return builder.call(fn, ())
+
 
 # unistd.h
 
@@ -537,7 +551,8 @@ c.stdlib = SimpleNamespace(malloc=_malloc,
                            free=_free,
                            exit=_exit,
                            getenv=_getenv,
-                           mkstemp=_mkstemp,)
+                           mkstemp=_mkstemp,
+                           abort=_abort,)
 
 
 c.unistd = SimpleNamespace(read=_read,
@@ -570,6 +585,11 @@ c.dlfcn = SimpleNamespace(dlopen=_dlopen,
                           RTLD_LOCAL=ir.Constant(c.types.int, 0x0),
                           RTLD_GLOBAL=ir.Constant(c.types.int, 0x00100),
                           )
+
+# Reference for constants:
+# https://git.musl-libc.org/cgit/musl/plain/include/sysexits.h
+c.sysexits = SimpleNamespace(EX_OK = ir.Constant(c.types.int, 0),
+                             EX_SOFTWARE = ir.Constant(c.types.int, 70))
 
 # ------------------------------------------------------------------------------
 # This is libm

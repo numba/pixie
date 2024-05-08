@@ -58,7 +58,7 @@ class TestCombiningPixieModules(PixieTestCase):
         PixieTestCase.setUpClass()
 
         functionlib_tus = (TranslationUnit("llvm_function", llvm_function),)
-        functionlib_export_config = ExportConfiguration('embed_dso')
+        functionlib_export_config = ExportConfiguration()
         functionlib_export_config.add_symbol(python_name='function',
                                              symbol_name='_Z8functionPi',
                                              signature='void(i64*)',)
@@ -74,7 +74,7 @@ class TestCombiningPixieModules(PixieTestCase):
         fnlib.compile()
 
         optlib_tus = (TranslationUnit("llvm_optimise", llvm_optimise),)
-        optlib_export_config = ExportConfiguration('embed_dso')
+        optlib_export_config = ExportConfiguration()
         optlib_export_config.add_symbol(python_name='optimise',
                                         symbol_name='_Z9optimiserPFlvEPlS1_',
                                         signature='void(void*, i64*, i64*)',)

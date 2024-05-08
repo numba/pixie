@@ -58,7 +58,7 @@ class TestMultipleFunctionsSingleModule(PixieTestCase):
         optlib_tus = (TranslationUnit("llvm_optimise", llvm_optimise),
                       TranslationUnit("llvm_function", llvm_function),
                       TranslationUnit("llvm_specialize", llvm_specialize))
-        optlib_export_config = ExportConfiguration('embed_dso')
+        optlib_export_config = ExportConfiguration()
         optlib_export_config.add_symbol(python_name='optimise',
                                         symbol_name='_Z9optimiserPFlvEPlS1_',
                                         signature='void(void*, i64*, i64*)',)

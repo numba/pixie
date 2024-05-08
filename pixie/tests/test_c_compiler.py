@@ -55,7 +55,7 @@ class TestCCompiler(PixieTestCase):
                 ntf.flush()
                 tus.append(tu_from_c_source(ntf.name))
 
-        export_config = ExportConfiguration(versioning_strategy='embed_dso')
+        export_config = ExportConfiguration()
         export_config.add_symbol(python_name='f',
                                  symbol_name='_Z1fPdS_',
                                  signature='void(double*, double*)',)
