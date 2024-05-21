@@ -28,7 +28,7 @@ jobs:
       - name: Install dependencies
         shell: bash -l {0}
         run: |
-          conda install python=3.11 pytest coverage numpy numba
+          conda install python=3.12 pytest coverage numpy numba
       - name : Display packages
         run: |
           python -m numba -s
