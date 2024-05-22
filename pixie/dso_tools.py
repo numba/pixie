@@ -11,7 +11,8 @@ class ElfMapper(object):
 
     def __init__(self, module):
         self._mod = module
-        self._embedded_libhandle_name = "_libhandle" # f"_libhandle_{uuid.uuid4().hex}"
+        # TODO: put this back in f"_libhandle_{uuid.uuid4().hex}"
+        self._embedded_libhandle_name = "_libhandle"
         self._elf_filepath = None
         self._ctx = Context()
 
@@ -20,8 +21,8 @@ class ElfMapper(object):
         # This creates function that loads and wires in the _mod_init_func_ptr
         # global.
         do_load_fn = ir.Function(self._mod,
-                                ir.FunctionType(ir.VoidType(), ()),
-                                name="_do_load")
+                                 ir.FunctionType(ir.VoidType(), ()),
+                                 name="_do_load")
         do_load_entry_block = do_load_fn.append_basic_block('entry_block')
         do_load_builder = ir.IRBuilder(do_load_entry_block)
 
@@ -51,7 +52,7 @@ class ElfMapper(object):
         # 1. load an embedded library appropriate to the selection method used.
         # 2. write the address of the embedded library's handle into a global.
         dso_ctor_fn = ir.Function(self._mod, ir.FunctionType(c.types.void, ()),
-                                name="_dso_ctor")
+                                  name="_dso_ctor")
         dso_ctor_entry_block = dso_ctor_fn.append_basic_block('entry_block')
         dso_ctor_builder = ir.IRBuilder(dso_ctor_entry_block)
         # create the function that will do the loading of the embedded module.
@@ -71,7 +72,7 @@ class ElfMapper(object):
         """
         # Shared library constructor function:
         dso_dtor_fn = ir.Function(self._mod, ir.FunctionType(c.types.void, ()),
-                                name="_dso_dtor")
+                                  name="_dso_dtor")
         dso_dtor_entry_block = dso_dtor_fn.append_basic_block('entry_block')
         dso_dtor_builder = ir.IRBuilder(dso_dtor_entry_block)
         _handle = self._mod.get_global(self._embedded_libhandle_name)
@@ -91,7 +92,7 @@ class ElfMapper(object):
         _EXTRACTED_FILEPATH_as_charptr = dso_dtor_builder.bitcast(
             dso_handler.EXTRACTED_FILEPATH, c.types.charptr)
         dso_handler._destroy_internal(dso_dtor_builder,
-                                    _EXTRACTED_FILEPATH_as_charptr)
+                                      _EXTRACTED_FILEPATH_as_charptr)
         dso_dtor_builder.ret_void()
 
         # Shared library destructor declaration cf.
@@ -135,19 +136,19 @@ def generate_dso_ctor_dtor(mod, ctor_or_dtor, func_to_priority_map):
 def load_library(builder, ctx, file_path, handle_cache):
     """Loads the library at file_path into the handle_cache, if handle_cache
     is not null, returns the result of loading handle_cache"""
-    mod = builder.module
     is_null = ctx.is_null(builder, builder.load(handle_cache))
     with builder.if_else(is_null) as (then, otherwise):
         with then:
             # find out if the handle is null, if so dlopen the library and store
             # the handle
             libhandle = c.dlfcn.dlopen(builder, file_path,
-                                    builder.or_(c.dlfcn.RTLD_NOW,
-                                                c.dlfcn.RTLD_LOCAL))
+                                       builder.or_(c.dlfcn.RTLD_NOW,
+                                                   c.dlfcn.RTLD_LOCAL))
             builder.store(libhandle, handle_cache)
         with otherwise:
             libhandle = builder.load(handle_cache)
     return libhandle
+
 
 def load_symbol(builder, ctx, file_path, symbol_name, handle_cache):
     """Open library at absolute file system path "file_path" and fetch address
@@ -192,13 +193,13 @@ def apply_selector(builder, binaries, selector_class):
     # themselves.
     size_t_void_fnty = ir.FunctionType(c.stddef.size_t, ())
     casted = builder.bitcast(nbytes_fn_ptr,
-                                     size_t_void_fnty.as_pointer().as_pointer())
+                             size_t_void_fnty.as_pointer().as_pointer())
     nbytes = builder.call(builder.load(casted), ())
 
     voidptr_void_fnty = ir.FunctionType(c.types.voidptr, ())
     voidptr_void_fnty_ptr_ptr = voidptr_void_fnty.as_pointer().as_pointer()
     casted = builder.bitcast(get_bytes_fn_ptr,
-                                     voidptr_void_fnty_ptr_ptr)
+                             voidptr_void_fnty_ptr_ptr)
     thebytes = builder.call(builder.load(casted), ())
     return nbytes, thebytes
     # END selector PART

@@ -38,7 +38,8 @@ _va_list_ty = ir.LiteralStructType([langref.types.i32,
 c.stdarg = SimpleNamespace(va_list=_va_list_ty)
 
 
-def _generate_standard_binding(builder, libname, function_name, resty, argtys, fnargs):
+def _generate_standard_binding(builder, libname, function_name, resty, argtys,
+                               fnargs):
     fnty = ir.FunctionType(resty, argtys)
     libandfn = f"{libname}.{function_name}"
     if builder.module.globals.get(libandfn, None) is None:
@@ -113,6 +114,7 @@ def _shm_unlink(builder, _name,):
 
 # stdlib
 
+
 def _malloc(builder, _size):
     assert _size.type == c.stddef.size_t, _size.type
     return _generate_standard_binding(builder=builder,
@@ -179,6 +181,7 @@ def _mkstemp(builder, _template):
     else:
         fn = get_or_insert_function(builder.module, fnty, "libc.mkstemp")
         return builder.call(fn, (_template,))
+
 
 def _abort(builder,):
     fnty = ir.FunctionType(c.types.void, ())
@@ -289,18 +292,22 @@ def _printf(builder, _fmt, *varargs):
         va_list = local_builder.bitcast(va_list_ptr, i8_ptr)
 
         llvm_va_start_fnty = ir.FunctionType(langref.types.void, (i8_ptr,))
-        llvm_va_start_fn = get_or_insert_function(builder.module, llvm_va_start_fnty, "llvm.va_start")
+        llvm_va_start_fn = get_or_insert_function(builder.module,
+                                                  llvm_va_start_fnty,
+                                                  "llvm.va_start")
 
         local_builder.call(llvm_va_start_fn, (va_list,))
 
-        vprintf_fnty = ir.FunctionType(c.types.void, (_fmt.type,
-                                                      c.stdarg.va_list.as_pointer()))
+        vprintf_fnty = ir.FunctionType(c.types.void,
+                                       (_fmt.type,
+                                        c.stdarg.va_list.as_pointer()))
         c_fn = get_or_insert_function(builder.module, vprintf_fnty, "vprintf")
 
         local_builder.call(c_fn, (fn.args[0], va_list_ptr))
 
         llvm_va_end_fnty = ir.FunctionType(langref.types.void, (i8_ptr,))
-        llvm_va_end_fn = get_or_insert_function(builder.module, llvm_va_end_fnty, "llvm.va_end")
+        llvm_va_end_fn = get_or_insert_function(builder.module,
+                                                llvm_va_end_fnty, "llvm.va_end")
 
         local_builder.call(llvm_va_end_fn, (va_list,))
 
@@ -332,19 +339,23 @@ def _snprintf(builder,  _str, _size, _format, *varargs):
         va_list = local_builder.bitcast(va_list_ptr, i8_ptr)
 
         llvm_va_start_fnty = ir.FunctionType(langref.types.void, (i8_ptr,))
-        llvm_va_start_fn = get_or_insert_function(builder.module, llvm_va_start_fnty, "llvm.va_start")
+        llvm_va_start_fn = get_or_insert_function(builder.module,
+                                                  llvm_va_start_fnty,
+                                                  "llvm.va_start")
 
         local_builder.call(llvm_va_start_fn, (va_list,))
 
-        vsnprintf_fnty = ir.FunctionType(c.types.int, (_str.type, _size.type,
-                                                       _format.type,
-                                                       c.stdarg.va_list.as_pointer()))
-        c_fn = get_or_insert_function(builder.module, vsnprintf_fnty, "vsnprintf")
+        vsnprintf_fnty = ir.FunctionType(c.types.int,
+                                         (_str.type, _size.type, _format.type,
+                                          c.stdarg.va_list.as_pointer()))
+        c_fn = get_or_insert_function(builder.module, vsnprintf_fnty,
+                                      "vsnprintf")
 
         retval = local_builder.call(c_fn, fn.args + (va_list_ptr,))
 
         llvm_va_end_fnty = ir.FunctionType(langref.types.void, (i8_ptr,))
-        llvm_va_end_fn = get_or_insert_function(builder.module, llvm_va_end_fnty, "llvm.va_end")
+        llvm_va_end_fn = get_or_insert_function(builder.module,
+                                                llvm_va_end_fnty, "llvm.va_end")
 
         local_builder.call(llvm_va_end_fn, (va_list,))
         local_builder.ret(retval)
@@ -499,8 +510,6 @@ def _dlclose(builder, _handle):
 # ------------------------------------------------------------------------------
 
 
-
-
 c.types = SimpleNamespace(int=_int32_t,
                           float=ir.FloatType(),
                           double=ir.DoubleType(),
@@ -588,8 +597,8 @@ c.dlfcn = SimpleNamespace(dlopen=_dlopen,
 
 # Reference for constants:
 # https://git.musl-libc.org/cgit/musl/plain/include/sysexits.h
-c.sysexits = SimpleNamespace(EX_OK = ir.Constant(c.types.int, 0),
-                             EX_SOFTWARE = ir.Constant(c.types.int, 70))
+c.sysexits = SimpleNamespace(EX_OK=ir.Constant(c.types.int, 0),
+                             EX_SOFTWARE=ir.Constant(c.types.int, 70))
 
 # ------------------------------------------------------------------------------
 # This is libm
@@ -597,119 +606,125 @@ c.sysexits = SimpleNamespace(EX_OK = ir.Constant(c.types.int, 0),
 m = SimpleNamespace()
 
 # ------------------------------------------------------------------------------
-
-
-def _main():
-    class _tmp():
-        def module(self):
-            return ir.Module()
-
-        def function(self, module=None, name='my_func'):
-            module = module or self.module()
-            fnty = ir.FunctionType(c.types.int, ())
-            return ir.Function(module, fnty, name)
-
-        def block(self, func=None, name=''):
-            func = func or self.function()
-            return func.append_basic_block(name)
-
-    helper = _tmp()
-    fn = helper.function()
-    block = fn.append_basic_block('a_block')
-    builder = ir.IRBuilder(block)
-
-    # test memset
-    #_s = builder.alloca(c.types.int, name="s")
-    #_c = builder.alloca(c.types.int, name="c")
-    #_n = builder.alloca(c.stddef.size_t, name="n")
-    #c.string.memset(builder, builder.bitcast(_s, c.types.voidptr), builder.load(_c), builder.load(_n))
-
-    # test snprintf
-    #_str = builder.alloca(c.types.char, name="str")
-    #_size = builder.alloca(c.stddef.size_t, name="size")
-    #_format = builder.alloca(c.types.char, name="format")
-    #_some_int = builder.alloca(c.types.int, name="some_int")
-    #c.stdio.snprintf(builder, _str, builder.load(_size), _format, builder.load(_some_int))
-
-
-    ## test perror
-    #_s = builder.alloca(c.types.char, name="s")
-    #c.stdio.perror(builder, _s)
-
-    # test exit
-    #_status = builder.alloca(c.types.int, name="status")
-    #c.stdlib.exit(builder, builder.load(_status))
-
-    # test shm_open
-    #_name = builder.alloca(c.types.char, name="name")
-    #_oflag = builder.alloca(c.types.int, name="oflag")
-    #builder.store(builder.or_(c.fcntl.O_RDWR, c.fcntl.O_CREAT), _oflag)
-    #_mode = builder.alloca(c.sys.types.mode_t, name="mode")
-    #builder.store(builder.or_(c.sys.stat.S_IRUSR, c.sys.stat.S_IWUSR), _mode)
-    #stat = c.fcntl.shm_open(builder, _name, builder.load(_oflag), builder.load(_mode))
-
-    ## test open
-    #_name = builder.alloca(c.types.char, name="name")
-    #_oflag = builder.alloca(c.types.int, name="oflag")
-    #builder.store(builder.or_(c.fcntl.O_RDWR, c.fcntl.O_CREAT), _oflag)
-    #_mode = builder.alloca(c.sys.types.mode_t, name="mode")
-    #builder.store(builder.or_(c.sys.stat.S_IRUSR, c.sys.stat.S_IWUSR), _mode)
-    #stat = c.fcntl.open(builder, _name, builder.load(_oflag), builder.load(_mode))
-
-    ## test ftruncate
-    #_flides = builder.alloca(c.types.int, name="flides")
-    #_length = builder.alloca(c.sys.types.off_t, name="length")
-    #stat = c.unistd.ftruncate(builder, builder.load(_flides), builder.load(_length))
-
-    ## test write
-    #_fd = builder.alloca(c.types.int, name="fd")
-    #_buf = builder.alloca(c.types.char, name="buf")
-    #_count = builder.alloca(c.stddef.size_t, name="count")
-    #stat = c.unistd.write(builder, builder.load(_fd), _buf, builder.load(_count))
-
-    # test free
-    #_ptr = builder.alloca(c.types.int, name="ptr")
-    #c.stdlib.free(builder, builder.bitcast(_ptr, c.types.voidptr))
-
-    # test getpid
-    #c.unistd.getpid(builder)
-
-    # test readlink
-    #_path = builder.alloca(c.types.char, name="path")
-    #_buf = builder.alloca(c.types.char, name="buf")
-    #_count = builder.alloca(c.stddef.size_t, name="count")
-    #stat = c.unistd.readlink(builder, _path, _buf, builder.load(_count))
-
-    # test dlopen
-    #_path = builder.alloca(c.types.char, name="path")
-    #_mode = builder.alloca(c.types.int, name="mode")
-    #builder.store(c.dlfcn.RTLD_NOW, _mode)
-    #stat = c.dlfcn.dlopen(builder, _path, builder.load(_mode))
-
-    # test dlclose
-    #_handle = builder.alloca(c.types.char, name="handle")
-    #stat = c.dlfcn.dlclose(builder, _handle)
-
-    # test dlsym
-    #_handle = builder.alloca(c.types.char, name="handle")
-    #_symbol = builder.alloca(c.types.char, name="symbol")
-    #stat = c.dlfcn.dlsym(builder, _handle, _symbol)
-
-    # test dlerror
-    #stat = c.dlfcn.dlerror(builder,)
-
-    # test printf
-    #_str = builder.alloca(c.types.char, name="str")
-    #_size = builder.alloca(c.stddef.size_t, name="size")
-    #_format = builder.alloca(c.types.char, name="format")
-    #_some_int = builder.alloca(c.types.int, name="some_int")
-    #c.stdio.printf(builder, _str, _size, _format, _some_int)
-
-
-    #builder.ret_void()
-    #print(builder.module)
-    #import pdb; pdb.set_trace()
-
-
-if __name__ == "__main__":
-    _main()
+# DEBUG
+# ------------------------------------------------------------------------------
+# def _main():
+#     class _tmp():
+#         def module(self):
+#             return ir.Module()
+#
+#         def function(self, module=None, name='my_func'):
+#             module = module or self.module()
+#             fnty = ir.FunctionType(c.types.int, ())
+#             return ir.Function(module, fnty, name)
+#
+#         def block(self, func=None, name=''):
+#             func = func or self.function()
+#             return func.append_basic_block(name)
+#
+#     helper = _tmp()
+#     fn = helper.function()
+#     block = fn.append_basic_block('a_block')
+#     builder = ir.IRBuilder(block)
+#
+#     # test memset
+#     _s = builder.alloca(c.types.int, name="s")
+#     _c = builder.alloca(c.types.int, name="c")
+#     _n = builder.alloca(c.stddef.size_t, name="n")
+#     c.string.memset(builder, builder.bitcast(_s, c.types.voidptr),
+#                     builder.load(_c), builder.load(_n))
+#
+#     # test snprintf
+#     _str = builder.alloca(c.types.char, name="str")
+#     _size = builder.alloca(c.stddef.size_t, name="size")
+#     _format = builder.alloca(c.types.char, name="format")
+#     _some_int = builder.alloca(c.types.int, name="some_int")
+#     c.stdio.snprintf(builder, _str, builder.load(_size), _format,
+#                      builder.load(_some_int))
+#
+#
+#     # test perror
+#     _s = builder.alloca(c.types.char, name="s")
+#     c.stdio.perror(builder, _s)
+#
+#     # test exit
+#     _status = builder.alloca(c.types.int, name="status")
+#     c.stdlib.exit(builder, builder.load(_status))
+#
+#     # test shm_open
+#     _name = builder.alloca(c.types.char, name="name")
+#     _oflag = builder.alloca(c.types.int, name="oflag")
+#     builder.store(builder.or_(c.fcntl.O_RDWR, c.fcntl.O_CREAT), _oflag)
+#     _mode = builder.alloca(c.sys.types.mode_t, name="mode")
+#     builder.store(builder.or_(c.sys.stat.S_IRUSR, c.sys.stat.S_IWUSR), _mode)
+#     stat = c.fcntl.shm_open(builder, _name, builder.load(_oflag),
+#                             builder.load(_mode))
+#
+#     # test open
+#     _name = builder.alloca(c.types.char, name="name")
+#     _oflag = builder.alloca(c.types.int, name="oflag")
+#     builder.store(builder.or_(c.fcntl.O_RDWR, c.fcntl.O_CREAT), _oflag)
+#     _mode = builder.alloca(c.sys.types.mode_t, name="mode")
+#     builder.store(builder.or_(c.sys.stat.S_IRUSR, c.sys.stat.S_IWUSR), _mode)
+#     stat = c.fcntl.open(builder, _name, builder.load(_oflag),
+#                         builder.load(_mode))
+#
+#     # test ftruncate
+#     _flides = builder.alloca(c.types.int, name="flides")
+#     _length = builder.alloca(c.sys.types.off_t, name="length")
+#     stat = c.unistd.ftruncate(builder, builder.load(_flides),
+#                               builder.load(_length))
+#
+#     # test write
+#     _fd = builder.alloca(c.types.int, name="fd")
+#     _buf = builder.alloca(c.types.char, name="buf")
+#     _count = builder.alloca(c.stddef.size_t, name="count")
+#     stat = c.unistd.write(builder, builder.load(_fd), _buf,
+#                           builder.load(_count))
+#
+#     # test free
+#     _ptr = builder.alloca(c.types.int, name="ptr")
+#     c.stdlib.free(builder, builder.bitcast(_ptr, c.types.voidptr))
+#
+#     # test getpid
+#     c.unistd.getpid(builder)
+#
+#     # test readlink
+#     _path = builder.alloca(c.types.char, name="path")
+#     _buf = builder.alloca(c.types.char, name="buf")
+#     _count = builder.alloca(c.stddef.size_t, name="count")
+#     stat = c.unistd.readlink(builder, _path, _buf, builder.load(_count))
+#
+#     # test dlopen
+#     _path = builder.alloca(c.types.char, name="path")
+#     _mode = builder.alloca(c.types.int, name="mode")
+#     builder.store(c.dlfcn.RTLD_NOW, _mode)
+#     stat = c.dlfcn.dlopen(builder, _path, builder.load(_mode))
+#
+#     # test dlclose
+#     _handle = builder.alloca(c.types.char, name="handle")
+#     stat = c.dlfcn.dlclose(builder, _handle)
+#
+#     # test dlsym
+#     _handle = builder.alloca(c.types.char, name="handle")
+#     _symbol = builder.alloca(c.types.char, name="symbol")
+#     stat = c.dlfcn.dlsym(builder, _handle, _symbol)
+#
+#     # test dlerror
+#     stat = c.dlfcn.dlerror(builder,)
+#
+#     # test printf
+#     _str = builder.alloca(c.types.char, name="str")
+#     _size = builder.alloca(c.stddef.size_t, name="size")
+#     _format = builder.alloca(c.types.char, name="format")
+#     _some_int = builder.alloca(c.types.int, name="some_int")
+#     c.stdio.printf(builder, _str, _size, _format, _some_int)
+#
+#
+#     builder.ret_void()
+#     print(builder.module)
+#     import pdb; pdb.set_trace()
+#
+#
+# if __name__ == "__main__":
+#     _main()

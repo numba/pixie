@@ -5,6 +5,7 @@ from llvmlite import binding as llvm
 # This enum is adapted from NumPy:
 # https://github.com/numpy/numpy/blob/08e2a6ede4ebb074747b50128b19c5903a47e8ad/numpy/core/src/common/npy_cpu_features.h#L11-L100
 
+
 class x86(IntEnum):
     NONE = 0
     # X86

@@ -1,13 +1,11 @@
 from pixie import PIXIECompiler, TranslationUnit, ExportConfiguration
-from pixie.tests.support import PixieTestCase, import_dynamic, needs_subprocess
+from pixie.tests.support import PixieTestCase, needs_subprocess
 from pixie.cpus import x86
 from pixie.mcext import c
-from numpy.core._multiarray_umath import __cpu_features__
 import ctypes
 import os
 import unittest
-import subprocess
-import sys
+
 
 llvm_foo_double_double = """
     define void @"_Z3fooPdS_"(double* %".1", double* %".2", double* %".out")
@@ -53,7 +51,7 @@ class TestIsaEnvVarDispatch(PixieTestCase):
 
         libfoo.compile()
 
-    @PixieTestCase.run_test_in_subprocess(envvars={"PIXIE_USE_ISA":"SSE2"})
+    @PixieTestCase.run_test_in_subprocess(envvars={"PIXIE_USE_ISA": "SSE2"})
     def test_envar_dispatch_valid(self):
         # Checks that PIXIE will dispatch so a given ISA env var, it's highly
         # unlikely to find a machine that just supports SSE2 and so this is
@@ -103,7 +101,6 @@ class TestIsaEnvVarDispatch(PixieTestCase):
         env["PIXIE_USE_ISA"] = bad_isa
         env["SUBPROC_TEST"] = "1"
 
-        capture = []
         with self.assertRaises(AssertionError) as raises:
             self.run_in_subprocess(fully_qualified_test,
                                    flags=['-m', 'unittest'],
@@ -113,9 +110,6 @@ class TestIsaEnvVarDispatch(PixieTestCase):
         self.assertIn(f"No matching library is available for ISA \"{bad_isa}\"",
                       out.decode())
         assert err == b""
-
-
-
 
 
 if __name__ == '__main__':

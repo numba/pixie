@@ -12,8 +12,8 @@ def address_of_symbol(DSO, symbol_name):
 
 
 def get_bitcode(DSO):
-    sz_name = f"get_bitcode_for_self_size"
-    data_name = f"get_bitcode_for_self"
+    sz_name = "get_bitcode_for_self_size"
+    data_name = "get_bitcode_for_self"
     sz_fptr = getattr(DSO, sz_name)
     sz_fptr.argtypes = ()
     sz_fptr.restype = ctypes.c_long
@@ -29,7 +29,8 @@ def get_nil(function):
 
 
 def specialize(obj):
-    def impl(baseline_cpu='host', baseline_features=None, targets_features=None):
+    def impl(baseline_cpu='host', baseline_features=None,
+             targets_features=None):
         if baseline_cpu == 'host':
             from llvmlite import binding as llvm
             target_cpu = llvm.get_host_cpu_name()

@@ -1,6 +1,4 @@
-from types import MappingProxyType
 from abc import ABC, abstractmethod
-from collections.abc import Iterable
 from collections import defaultdict, namedtuple
 import uuid
 import tempfile
@@ -17,8 +15,8 @@ from pixie import cpus, types, pyapi, overlay
 from pixie.codegen_helpers import Codegen, Context, _module_pass_manager
 from pixie.platform import Toolchain
 from pixie.selectors import x86CPUSelector
-from pixie.dso_tools import (ElfMapper, shmEmbeddedDSOHandler,
-                             mkstempEmbeddedDSOHandler)
+from pixie.dso_tools import (ElfMapper, shmEmbeddedDSOHandler,  # noqa: F401
+                             mkstempEmbeddedDSOHandler)  # noqa: F401
 from pixie.mcext import c
 from pixie import llvm_types as lt
 
@@ -72,6 +70,7 @@ class SimpleLinker():
 
     def __init__(self):
         self._toolchain = Toolchain()
+
     # takes object files and links them into a binary
     def link(self, objects, outfile='a.out'):
         # linker requires objects serialisd onto disk
@@ -131,17 +130,20 @@ class ExportConfiguration():
         self._data.append(_pixie_export(symbol_name, python_name, signature,
                                         metadata))
 
+
 class PIXIECompiler():
-    def __init__(self, library_name=None,
-                       translation_units=(),
-                       export_configuration=None,
-                       baseline_cpu='nocona',
-                       baseline_features=(),
-                       targets_features=(),
-                       python_cext=True,
-                       uuid=None,
-                       opt=3,
-                       output_dir='.'):
+
+    def __init__(self,
+                 library_name=None,
+                 translation_units=(),
+                 export_configuration=None,
+                 baseline_cpu='nocona',
+                 baseline_features=(),
+                 targets_features=(),
+                 python_cext=True,
+                 uuid=None,
+                 opt=3,
+                 output_dir='.'):
         self._library_name = library_name
         self._translation_units = translation_units
         self._export_configuration = export_configuration
@@ -209,13 +211,13 @@ class PIXIEModule(IRGenerator):
             # original. A reparse of the bitcode can produce a valid but not
             # identical bitcode as to what was inputted.
             if (len(self._user_source['llvm_ir']) == 1 and
-                len(self._user_source['llvm_bc']) == 0):
+                    len(self._user_source['llvm_bc']) == 0):
                 llvm_ir = self._user_source['llvm_ir'][0]
                 self._single_mod = llvm.parse_assembly(llvm_ir)
                 self._single_source = str(self._single_mod)
                 self._single_bitcode = self._single_mod.as_bitcode()
             if (len(self._user_source['llvm_ir']) == 0 and
-                len(self._user_source['llvm_bc']) == 1):
+                    len(self._user_source['llvm_bc']) == 1):
                 bc = self._user_source['llvm_bc'][0]
                 self._single_mod = llvm.parse_bitcode(bc)
                 self._single_source = str(self._single_mod)
@@ -252,7 +254,7 @@ class PIXIEModule(IRGenerator):
     def _compile_feature_specific_dsos(self,):
         # this returns a map of feature: dso compiled against that feature
         binaries = {}
-        all_features = set(self._targets_features) | {self._baseline_features,}
+        all_features = set(self._targets_features) | {self._baseline_features}
         for feature in all_features:
             cpu_feature = cpus.Features(feature)
             # bfeat = self._baseline_features
@@ -264,7 +266,6 @@ class PIXIEModule(IRGenerator):
                     binaries[str(feature).upper()] = f.read()
         return binaries
 
-
     def create_real_ifuncs(self, mod, embedded_libhandle_name):
 
         class IFunc(GlobalValue):
@@ -275,7 +276,7 @@ class PIXIEModule(IRGenerator):
             def __init__(self, module, name, IFuncTy, resolver_name):
                 assert isinstance(IFuncTy, ir.types.FunctionType)
                 super(IFunc, self).__init__(module, IFuncTy.as_pointer(),
-                                                    name=name)
+                                            name=name)
                 self.value_type = IFuncTy
                 self.initializer = None
                 resolver_ty = ir.FunctionType(IFuncTy.as_pointer(), ())
@@ -318,7 +319,8 @@ class PIXIEModule(IRGenerator):
                 ifunc = IFunc(mod, symbol_name, fnty, resolver_function_name)
                 resolver = ir.Function(mod, ifunc.resolver_value_type,
                                        resolver_function_name)
-                resolver_entry_block = resolver.append_basic_block('entry_block')
+                resolver_entry_block = resolver.append_basic_block(
+                    'entry_block')
                 resolver_builder = ir.IRBuilder(resolver_entry_block)
                 # This needs to dlsym
                 dso = resolver_builder.load(_handle)
@@ -349,11 +351,13 @@ class PIXIEModule(IRGenerator):
                 fnty_as_ptr = fnty.as_pointer()
                 # the dlsym return is just a void *
                 void_ptr_ty = ir.IntType(8).as_pointer()
+                fnptr_cache_name = f"_fnptr_cache_for_{symbol_name}"
                 fnptr_cache = ir.GlobalVariable(mod, void_ptr_ty,
-                                                f"_fnptr_cache_for_{symbol_name}")
+                                                fnptr_cache_name)
                 # nullify on init, this is important state as the trampoline
                 # function branches on the NULL.
-                fnptr_cache.initializer = ir.Constant(fnptr_cache.type.pointee, None)
+                fnptr_cache.initializer = ir.Constant(fnptr_cache.type.pointee,
+                                                      None)
 
                 # create a function that will trampoline
                 trampoline_fn = ir.Function(mod, fnty,
@@ -362,7 +366,8 @@ class PIXIEModule(IRGenerator):
                 builder = ir.IRBuilder(block)
 
                 fnptr_local_ref = builder.alloca(fnty_as_ptr)
-                pred = builder.icmp_unsigned("==", builder.load(fnptr_cache), fnptr_cache.type(None))
+                pred = builder.icmp_unsigned("==", builder.load(fnptr_cache),
+                                             fnptr_cache.type(None))
                 printf(builder, "predicate %d\n", pred)
                 with builder.if_else(pred) as (then, otherwise):
                     with then:
@@ -370,15 +375,19 @@ class PIXIEModule(IRGenerator):
                         # find the symbol
                         dso = builder.load(_handle)
                         printf(builder, "dso is at %d\n", dso)
-                        const_symbol_name = ctx.insert_const_string(mod, symbol_name)
+                        const_symbol_name = ctx.insert_const_string(mod,
+                                                                    symbol_name)
                         sym = c.dlfcn.dlsym(builder, dso, const_symbol_name)
                         printf(builder, "called dlsym, %d\n", sym)
                         builder.store(sym, fnptr_cache)
-                        builder.store(builder.bitcast(sym, fnty_as_ptr), fnptr_local_ref)
+                        builder.store(builder.bitcast(sym, fnty_as_ptr),
+                                      fnptr_local_ref)
                     with otherwise:
                         printf(builder, "replay from cache\n")
                         # store the dso global value into the slot
-                        builder.store(builder.bitcast(builder.load(fnptr_cache), fnty_as_ptr), fnptr_local_ref)
+                        builder.store(builder.bitcast(
+                            builder.load(fnptr_cache), fnty_as_ptr),
+                            fnptr_local_ref)
                 fn = builder.load(fnptr_local_ref)
                 builder.call(fn, trampoline_fn.args)
                 builder.ret_void()
@@ -387,18 +396,18 @@ class PIXIEModule(IRGenerator):
         ctx = Context()
         bitcode = self._single_bitcode
 
-        bc_name = f'bitcode_for_self'
+        bc_name = 'bitcode_for_self'
         bitcode_const_bytes = ctx.insert_const_bytes(mod, bitcode, bc_name)
 
         fnty = ir.FunctionType(lt._void_star, [])
-        getter_name = f'get_bitcode_for_self'
+        getter_name = 'get_bitcode_for_self'
         fn = ir.Function(mod, fnty, getter_name)
         bb = fn.append_basic_block()
         fn_builder = ir.IRBuilder(bb)
         fn_builder.ret(bitcode_const_bytes)
 
         fnty = ir.FunctionType(lt._int64, [])
-        get_sz_name = f'get_bitcode_for_self_size'
+        get_sz_name = 'get_bitcode_for_self_size'
         fn = ir.Function(mod, fnty, get_sz_name)
         bb = fn.append_basic_block()
         fn_builder = ir.IRBuilder(bb)
@@ -433,7 +442,7 @@ class PIXIEModule(IRGenerator):
         # with a PIXIE dict vs. creating a C-Ext from scratch.
         if python_cext:
             gen = PixieDictGenerator(self._library_name, self._exported_symbols,
-                                    uuid=self._uuid)
+                                     uuid=self._uuid)
             gen._emit_python_wrapper(mod)
 
         return mod
@@ -449,9 +458,11 @@ ONE = ir.Constant(lt._int32, 1)
 MINUS_ONE = ir.Constant(lt._int32, -1)
 METH_VARARGS_AND_KEYWORDS = ir.Constant(lt._int32, 1 | 2)
 
+
 class PyModuleDef_Slot(object):
     Py_mod_create = ir.IntType(32)(1)
     Py_mod_exec = ir.IntType(32)(2)
+
 
 class PixieDictGenerator(object):
     """A base class to compile Python modules to a single shared library or

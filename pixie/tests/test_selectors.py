@@ -14,6 +14,8 @@ import sys
 import tempfile
 import uuid
 
+# TODO: use the compiler from pixie/compiler.py directly
+
 
 class SimpleCompiler():
     # takes llvm_ir, compiles it to an object file
@@ -25,8 +27,8 @@ class SimpleCompiler():
         # takes sources, returns object files
         objects = []
         codegen = Codegen(str(uuid.uuid4().hex),
-                            cpu_name=self._target_cpu,
-                            target_features=self._target_features)
+                          cpu_name=self._target_cpu,
+                          target_features=self._target_features)
         for source in sources:
             codelibrary = codegen.create_library(uuid.uuid4().hex)
             if isinstance(source, str):
@@ -45,6 +47,7 @@ class SimpleLinker():
 
     def __init__(self):
         self._toolchain = Toolchain()
+
     # takes object files and links them into a binary
     def link(self, objects, outfile='a.out'):
         # linker requires objects serialisd onto disk
@@ -100,14 +103,16 @@ class TestSelectors(PixieTestCase):
         mod = ir.Module()
         mod.triple = llvm.get_process_triple()
         fn = ir.Function(mod, ir.FunctionType(c.types.int, ()),
-                                name="foo")
+                         name="foo")
         block = fn.append_basic_block("entry_block")
         builder = ir.IRBuilder(block)
-        value = random.randint(0, 2**31-1) # C-int range
+        value = random.randint(0, 2**31-1)  # C-int range
         builder.ret(ir.Constant(c.types.int, value))
 
         dso = os.path.join(self.tmpdir.name, uuid.uuid4().hex)
-        compiler_driver = SimpleCompilerDriver(target_cpu='nocona', target_features=cpus.Features((cpus.x86.sse2,)))
+        target_features = cpus.Features((cpus.x86.sse2,))
+        compiler_driver = SimpleCompilerDriver(target_cpu='nocona',
+                                               target_features=target_features)
         compiler_driver.compile_and_link(sources=(str(mod),), outfile=dso)
         with open(dso, 'rb') as f:
             dso_bytes = f.read()
@@ -124,17 +129,18 @@ class TestSelectors(PixieTestCase):
         llvm_ir = self.gen_mod(dispatch_data, selector_class, dso_handler)
 
         dso = os.path.join(self.tmpdir.name, uuid.uuid4().hex)
-        compiler_driver = SimpleCompilerDriver(target_cpu='nocona', target_features=cpus.Features((cpus.x86.sse2,)))
+        target_features = cpus.Features((cpus.x86.sse2,))
+        compiler_driver = SimpleCompilerDriver(target_cpu='nocona',
+                                               target_features=target_features)
         compiler_driver.compile_and_link(sources=(llvm_ir,), outfile=dso)
 
         # check the DSO loads appropriately.
         binding = ctypes.CDLL(dso)
 
-
         uniq_filepath = dso_handler._EXTRACTED_FILEPATH
         uniq_filepath_global = getattr(binding, uniq_filepath.name)
         extracted_embedded_dso_path_bytes = ctypes.cast(uniq_filepath_global,
-                                                      ctypes.c_char_p).value
+                                                        ctypes.c_char_p).value
         extracted_embedded_dso_path = extracted_embedded_dso_path_bytes.decode()
         extracted_embedded_dso = ctypes.CDLL(extracted_embedded_dso_path)
         extracted_embedded_dso.foo.restype = ctypes.c_int
@@ -142,7 +148,6 @@ class TestSelectors(PixieTestCase):
 
         pyver = f"{sys.version_info.major}.{sys.version_info.minor}"
         assert extracted_embedded_dso.foo() == expected[pyver]
-
 
     def test_x86_isa_selector(self):
 
@@ -155,7 +160,9 @@ class TestSelectors(PixieTestCase):
 
         # Compile into DSO
         dso = os.path.join(self.tmpdir.name, uuid.uuid4().hex)
-        compiler_driver = SimpleCompilerDriver(target_cpu='nocona', target_features=cpus.Features((cpus.x86.sse2,)))
+        target_features = cpus.Features((cpus.x86.sse2,))
+        compiler_driver = SimpleCompilerDriver(target_cpu='nocona',
+                                               target_features=target_features)
         compiler_driver.compile_and_link(sources=(llvm_ir,), outfile=dso)
 
         # check the DSO loads appropriately.

@@ -10,7 +10,8 @@ from functools import lru_cache
 import types as pytypes
 
 # NOTE: This is copied from:
-# https://github.com/numba/numba/blob/04ebc63fe1dd1efd5a68cc9caf8f245404d99fa7/numba/tests/support.py#L754
+# https://github.com/numba/numba/blob/04ebc63fe1dd1efd5a68cc9caf8f245404d99fa7/numba/tests/support.py#L754  # noqa: E501
+
 
 def import_dynamic(modname):
     """
@@ -125,8 +126,6 @@ class PixieTestCase(TestCase):
         executed without error. The timeout kwarg can be used to allow more time
         for longer running tests, it defaults to 60 seconds.
         """
-        themod = self.__module__
-        thecls = type(self).__name__
         parts = (test_module, test_class, test_name)
         fully_qualified_test = '.'.join(x for x in parts if x is not None)
         cmd = [sys.executable, '-m', 'unittest', fully_qualified_test]
@@ -195,7 +194,7 @@ class PixieTestCase(TestCase):
             flags = []
         cmd = [sys.executable,] + flags + ["-c", code]
         popen = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE, env=env)
+                                 stderr=subprocess.PIPE, env=env)
         out, err = popen.communicate(timeout=timeout)
         if popen.returncode != 0:
             msg = "process failed with code %s: stderr follows\n%s\n"
@@ -203,11 +202,13 @@ class PixieTestCase(TestCase):
                                  out, err, popen.returncode)
         return out, err, popen.returncode
 
+
 @lru_cache
 def _has_clang():
     cmd = ('clang', '--help')
     try:
-        result = subprocess.run(cmd, capture_output=True, timeout=10., check=True)
+        result = subprocess.run(cmd, capture_output=True, timeout=10.,
+                                check=True)
         return bool(not result.returncode)
     except FileNotFoundError:
         return False

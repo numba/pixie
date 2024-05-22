@@ -93,7 +93,7 @@ class TestCombiningPixieModules(PixieTestCase):
         # Tests loading a couple of pixie modules and calling via symbols and
         # via a specialisation.
 
-        with self.load_pixie_module('optimise_library') as optimise_library,\
+        with self.load_pixie_module('optimise_library') as optimise_library, \
                 self.load_pixie_module('function_library') as function_library:
 
             # check the ctypes binding to the pre-compiled symbols works

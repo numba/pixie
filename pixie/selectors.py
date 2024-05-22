@@ -66,9 +66,7 @@ class Selector():
     def _select(self, builder, entry):
         # This is purely for debug/testing
         str_entry = self._ctx.insert_const_string(builder.module, str(entry))
-        # self._ctx.printf(builder, "about to store to debug selector global\n")
         builder.store(str_entry, self._debug_selector_str)
-        # self._ctx.printf(builder, "done store to debug selector global\n")
 
         # this does the wiring for the selected embedded data
         nbytes_fn = self._embedded_data[entry].nbytes_fn
@@ -207,8 +205,9 @@ class cpu_features(IntEnum):
 
 
 # These are effectively the features that NumPy cares about, see:
-# https://github.com/numpy/numpy/blob/08e2a6ede4ebb074747b50128b19c5903a47e8ad/doc/source/reference/simd/gen_features.py and
-# https://github.com/numpy/numpy/blob/08e2a6ede4ebb074747b50128b19c5903a47e8ad/doc/source/reference/simd/generated_tables/cpu_features.inc
+# https://github.com/numpy/numpy/blob/08e2a6ede4ebb074747b50128b19c5903a47e8ad/doc/source/reference/simd/gen_features.py # noqa: E501
+# and
+# https://github.com/numpy/numpy/blob/08e2a6ede4ebb074747b50128b19c5903a47e8ad/doc/source/reference/simd/generated_tables/cpu_features.inc # noqa: E501
 
 # This defines bit vectors of "interesting" features, the "older"
 # instruction sets are generally just supersets of one another. Since
@@ -270,14 +269,14 @@ class x86CPUSelector(Selector):
         i32 = langref.types.i32
         i32_ptr = i32.as_pointer()
 
-        # based on https://github.com/numpy/numpy/blob/08e2a6ede4ebb074747b50128b19c5903a47e8ad/numpy/core/src/common/npy_cpu_features.c
+        # based on https://github.com/numpy/numpy/blob/08e2a6ede4ebb074747b50128b19c5903a47e8ad/numpy/core/src/common/npy_cpu_features.c # noqa: E501
         def gen_cpuid_probe(mod):
             # start cpuid_probe
             cpuid_probe_args = (langref.types.i32,) + (i32_ptr,) * 4
             cpuid_probe_fnty = ir.FunctionType(c.types.void, cpuid_probe_args)
             func_cpuid_probe = ir.Function(mod, cpuid_probe_fnty,
                                            name="cpuid_probe")
-            func_cpuid_probe.attributes.add('noinline') # this is for debug
+            func_cpuid_probe.attributes.add('noinline')  # this is for debug
             block = func_cpuid_probe.append_basic_block(name="entry")
             builder = ir.IRBuilder(block)
             arg = builder.alloca(i32)
@@ -301,7 +300,8 @@ class x86CPUSelector(Selector):
             #
             # This is the non-PIC version, which seems to work ok.
             asm_str = "cpuid\n\t"
-            reg_info ="={ax},={bx},={cx},={dx},{ax},{cx},~{dirflag},~{fpsr},~{flags}"
+            reg_info = ("={ax},={bx},={cx},={dx},{ax},{cx},"
+                        "~{dirflag},~{fpsr},~{flags}")
             result = builder.asm(fty, asm_str, reg_info,
                                  (builder.load(arg), ir.Constant(i32, 0)),
                                  False, name="asm_cpuid")
@@ -418,7 +418,6 @@ class x86CPUSelector(Selector):
         self._ctx.init_alloca(builder, found)
         builder.store(ir.Constant(i8, 0), found)
 
-
         fv = builder.load(features_vect)
 
         def cpu_release_order(*args):
@@ -430,30 +429,31 @@ class x86CPUSelector(Selector):
         # This is an "escape hatch" for debug etc whereby the ISA is picked from
         # the environment variable PIXIE_USE_ISA (if it has been set).
         # TODO: use secure_getenv if available
-        PIXIE_USE_ISA_env_var_str = self._ctx.insert_const_string(builder.module,
-                                        "PIXIE_USE_ISA")
+        PIXIE_USE_ISA_env_var_str = self._ctx.insert_const_string(
+            builder.module, "PIXIE_USE_ISA")
         # this returns a char * to the env var contents, or NULL if no match
         PIXIE_USE_ISA_value = c.stdlib.getenv(builder,
                                               PIXIE_USE_ISA_env_var_str)
         envvar_set_pred = builder.not_(
             self._ctx.is_null(builder, PIXIE_USE_ISA_value))
-        self.debug_print(builder, f"Testing for env var dispatch.\n")
-        with builder.if_else(envvar_set_pred, likely=False) as (then, otherwise):
+        self.debug_print(builder, "Testing for env var dispatch.\n")
+        with builder.if_else(envvar_set_pred, likely=False) as (then,
+                                                                otherwise):
             with then:
-                self.debug_print(builder, f"Using env var dispatch.\n")
-                # TODO: this is like the env var selector impl, could that be used?
+                self.debug_print(builder, "Using env var dispatch.\n")
+                # TODO: this is like the env var selector impl, could that be
+                # used?
                 for specific_feature in variant_order:
                     zero = ir.Constant(c.types.int, 0)
                     max_len = ir.Constant(c.stddef.size_t, 255)
-                    feature_name_str = self._ctx.insert_const_string(builder.module,
-                                            specific_feature)
-                    len_feature_name_str = c.stddef.size_t(len(specific_feature))
+                    feature_name_str = self._ctx.insert_const_string(
+                        builder.module, specific_feature)
                     strcmp_res = c.string.strncmp(builder, PIXIE_USE_ISA_value,
-                                                feature_name_str,
-                                                max_len)
+                                                  feature_name_str,
+                                                  max_len)
                     pred = builder.icmp_signed("==", strcmp_res, zero)
                     with builder.if_then(pred):
-                        msg = f"Using version from env var: PIXIE_USE_ISA=%s\n"
+                        msg = "Using version from env var: PIXIE_USE_ISA=%s\n"
                         self.debug_print(builder, msg, PIXIE_USE_ISA_value)
                         self._select(builder, specific_feature)
                         # mark having found a suitable match
@@ -462,22 +462,23 @@ class x86CPUSelector(Selector):
 
                 # check that a match was found and abort otherwise
                 pred = builder.icmp_unsigned("==", builder.load(found),
-                                                ir.Constant(i8, 0))
+                                             ir.Constant(i8, 0))
                 with builder.if_then(pred, likely=False):
-                    message = (f"No matching library is available for ISA \"%s\" "
-                                "supplied via environment variable PIXIE_USE_ISA.\n"
-                                "\nThis error is unrecoverable and the program "
-                                "will now exit. Try checking that the supplied ISA "
-                                "is valid and then rerun.\n")
-                    error_message = self._ctx.insert_const_string(builder.module,
-                                                                message)
+                    message = ("No matching library is available for ISA "
+                               "\"%s\" supplied via environment variable "
+                               "PIXIE_USE_ISA.\n"
+                               "\nThis error is unrecoverable and the program "
+                               "will now exit. Try checking that the supplied "
+                               "ISA is valid and then rerun.\n")
+                    error_message = self._ctx.insert_const_string(
+                        builder.module, message)
                     c.stdio.printf(builder, error_message, PIXIE_USE_ISA_value)
                     # call sigabrt.
                     self.debug_print(builder, "calling exit")
                     c.stdlib.exit(builder, c.sysexits.EX_SOFTWARE)
                     builder.ret_void()
             with otherwise:
-                self.debug_print(builder, f"No env var set.\n")
+                self.debug_print(builder, "No env var set.\n")
 
         # The env var escape hatch wasn't used so do the standard dispatch
         for specific_feature in variant_order:
