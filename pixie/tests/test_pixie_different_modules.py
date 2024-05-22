@@ -2,7 +2,6 @@ import ctypes
 import timeit
 import unittest
 from pixie import PIXIECompiler, TranslationUnit, ExportConfiguration
-from pixie.cpus import x86
 from pixie.types import Signature
 from pixie.tests.support import PixieTestCase
 import llvmlite.binding as llvm
@@ -57,6 +56,10 @@ class TestCombiningPixieModules(PixieTestCase):
     def setUpClass(cls):
         PixieTestCase.setUpClass()
 
+        target_descr = cls.default_test_config()
+        bcpu = target_descr.baseline_target.cpu
+        bfeat = target_descr.baseline_target.features
+
         functionlib_tus = (TranslationUnit("llvm_function", llvm_function),)
         functionlib_export_config = ExportConfiguration()
         functionlib_export_config.add_symbol(python_name='function',
@@ -66,8 +69,8 @@ class TestCombiningPixieModules(PixieTestCase):
         fnlib = PIXIECompiler(library_name='function_library',
                               translation_units=functionlib_tus,
                               export_configuration=functionlib_export_config,
-                              baseline_cpu='nocona',
-                              baseline_features=x86.sse3,
+                              baseline_cpu=bcpu,
+                              baseline_features=bfeat,
                               python_cext=True,
                               output_dir=cls.tmpdir.name)
 
@@ -82,8 +85,8 @@ class TestCombiningPixieModules(PixieTestCase):
         optlib = PIXIECompiler(library_name='optimise_library',
                                translation_units=optlib_tus,
                                export_configuration=optlib_export_config,
-                               baseline_cpu='nocona',
-                               baseline_features=x86.sse3,
+                               baseline_cpu=bcpu,
+                               baseline_features=bfeat,
                                python_cext=True,
                                output_dir=cls.tmpdir.name)
 

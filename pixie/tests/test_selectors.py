@@ -1,76 +1,18 @@
-from pixie import cpus
-from pixie.codegen_helpers import Codegen
+from pixie.targets.x86_64 import features
+from pixie.targets.common import Features
 from pixie.dso_tools import ElfMapper, shmEmbeddedDSOHandler
 from pixie.mcext import c
-from pixie.platform import Toolchain
-from pixie.selectors import PyVersionSelector, x86CPUSelector
-from pixie.tests.support import PixieTestCase
+from pixie.selectors import PyVersionSelector
+from pixie.targets.x86_64 import x86CPUSelector
+from pixie.tests.support import PixieTestCase, x86_64_only
+from pixie.compiler import SimpleCompilerDriver
 from llvmlite import ir
 from llvmlite import binding as llvm
 import ctypes
 import os
 import random
 import sys
-import tempfile
 import uuid
-
-# TODO: use the compiler from pixie/compiler.py directly
-
-
-class SimpleCompiler():
-    # takes llvm_ir, compiles it to an object file
-    def __init__(self, target_cpu, target_features):
-        self._target_cpu = target_cpu
-        self._target_features = target_features
-
-    def compile(self, sources):
-        # takes sources, returns object files
-        objects = []
-        codegen = Codegen(str(uuid.uuid4().hex),
-                          cpu_name=self._target_cpu,
-                          target_features=self._target_features)
-        for source in sources:
-            codelibrary = codegen.create_library(uuid.uuid4().hex)
-            if isinstance(source, str):
-                mod = llvm.parse_assembly(source)
-            elif isinstance(source, bytes):
-                mod = llvm.parse_bitcode(source)
-            else:
-                assert 0, f"Unknown source type {type(source)}"
-            codelibrary.add_llvm_module(mod)
-            objects.append(codelibrary.emit_native_object())
-            del codelibrary
-        return tuple(objects)
-
-
-class SimpleLinker():
-
-    def __init__(self):
-        self._toolchain = Toolchain()
-
-    # takes object files and links them into a binary
-    def link(self, objects, outfile='a.out'):
-        # linker requires objects serialisd onto disk
-        with tempfile.TemporaryDirectory() as build_dir:
-            objfiles = []
-            for obj in objects:
-                ntf = os.path.join(build_dir, f"{uuid.uuid4().hex}.o")
-                with open(ntf, 'wb') as f:
-                    f.write(obj)
-                objfiles.append(ntf)
-            self._toolchain.link_shared(outfile, objfiles)
-
-
-class SimpleCompilerDriver():
-    # like e.g. clang or gcc, compiles and links source translation units to
-    # a DSO.
-    def __init__(self, target_cpu, target_features):
-        self._compiler = SimpleCompiler(target_cpu, target_features)
-        self._linker = SimpleLinker()
-
-    def compile_and_link(self, sources, outfile='a.out'):
-        return self._linker.link(self._compiler.compile(sources),
-                                 outfile=outfile)
 
 
 class TestSelectors(PixieTestCase):
@@ -110,8 +52,10 @@ class TestSelectors(PixieTestCase):
         builder.ret(ir.Constant(c.types.int, value))
 
         dso = os.path.join(self.tmpdir.name, uuid.uuid4().hex)
-        target_features = cpus.Features((cpus.x86.sse2,))
-        compiler_driver = SimpleCompilerDriver(target_cpu='nocona',
+        target_descr = self.default_test_config()
+        target_cpu = target_descr.baseline_target.cpu
+        target_features = Features(target_descr.baseline_target.features)
+        compiler_driver = SimpleCompilerDriver(target_cpu=target_cpu,
                                                target_features=target_features)
         compiler_driver.compile_and_link(sources=(str(mod),), outfile=dso)
         with open(dso, 'rb') as f:
@@ -129,8 +73,10 @@ class TestSelectors(PixieTestCase):
         llvm_ir = self.gen_mod(dispatch_data, selector_class, dso_handler)
 
         dso = os.path.join(self.tmpdir.name, uuid.uuid4().hex)
-        target_features = cpus.Features((cpus.x86.sse2,))
-        compiler_driver = SimpleCompilerDriver(target_cpu='nocona',
+        target_descr = self.default_test_config()
+        target_cpu = target_descr.baseline_target.cpu
+        target_features = Features(target_descr.baseline_target.features)
+        compiler_driver = SimpleCompilerDriver(target_cpu=target_cpu,
                                                target_features=target_features)
         compiler_driver.compile_and_link(sources=(llvm_ir,), outfile=dso)
 
@@ -149,6 +95,7 @@ class TestSelectors(PixieTestCase):
         pyver = f"{sys.version_info.major}.{sys.version_info.minor}"
         assert extracted_embedded_dso.foo() == expected[pyver]
 
+    @x86_64_only
     def test_x86_isa_selector(self):
 
         dispatch_keys = ('baseline', 'SSE2', 'SSE3', 'SSE42', 'AVX')
@@ -160,7 +107,7 @@ class TestSelectors(PixieTestCase):
 
         # Compile into DSO
         dso = os.path.join(self.tmpdir.name, uuid.uuid4().hex)
-        target_features = cpus.Features((cpus.x86.sse2,))
+        target_features = Features((features.sse2,))
         compiler_driver = SimpleCompilerDriver(target_cpu='nocona',
                                                target_features=target_features)
         compiler_driver.compile_and_link(sources=(llvm_ir,), outfile=dso)

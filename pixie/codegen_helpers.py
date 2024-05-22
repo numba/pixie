@@ -1,5 +1,15 @@
+from abc import ABC, abstractmethod
+from collections import namedtuple
+from contextlib import contextmanager
 from llvmlite import ir
 from llvmlite import binding as llvm
+
+
+class IRGenerator(ABC):
+
+    @abstractmethod
+    def generate_ir(mod):
+        pass
 
 
 # NOTE: methods of this class are based on those in:
@@ -121,6 +131,66 @@ class Context():
 
     def init_alloca(self, builder, slot):
         builder.store(slot.type.pointee(None), slot)
+
+    @contextmanager
+    def for_range(self, builder, count, start=None, intp=None):
+        """
+        Generate LLVM IR for a for-loop in [start, count).
+        *start* is equal to 0 by default.
+
+        Yields a Loop namedtuple with the following members:
+        - `index` is the loop index's value
+        - `do_break` is a no-argument callable to break out of the loop
+        """
+        Loop = namedtuple('Loop', ('index', 'do_break'))
+
+        def increment_index(builder, val):
+            """
+            Increment an index *val*.
+            """
+            one = val.type(1)
+            # We pass the "nsw" flag in the hope that LLVM understands the index
+            # never changes sign.  Unfortunately this doesn't always work
+            # (e.g. ndindex()).
+            return builder.add(val, one, flags=['nsw'])
+
+        def terminate(builder, bbend):
+            bb = builder.basic_block
+            if bb.terminator is None:
+                builder.branch(bbend)
+
+        if intp is None:
+            intp = count.type
+        if start is None:
+            start = intp(0)
+        stop = count
+
+        bbcond = builder.append_basic_block("for.cond")
+        bbbody = builder.append_basic_block("for.body")
+        bbend = builder.append_basic_block("for.end")
+
+        def do_break():
+            builder.branch(bbend)
+
+        bbstart = builder.basic_block
+        builder.branch(bbcond)
+
+        with builder.goto_block(bbcond):
+            index = builder.phi(intp, name="loop.index")
+            pred = builder.icmp_signed('<', index, stop)
+            builder.cbranch(pred, bbbody, bbend)
+
+        with builder.goto_block(bbbody):
+            yield Loop(index, do_break)
+            # Update bbbody as a new basic block may have been activated
+            bbbody = builder.basic_block
+            incr = increment_index(builder, index)
+            terminate(builder, bbcond)
+
+        index.add_incoming(start, bbstart)
+        index.add_incoming(incr, bbbody)
+
+        builder.position_at_end(bbend)
 
 # NOTE: This is based on:
 # https://github.com/numba/numba/blob/04ebc63fe1dd1efd5a68cc9caf8f245404d99fa7/numba/core/codegen.py#L518

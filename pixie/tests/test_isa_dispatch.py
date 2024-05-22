@@ -1,6 +1,5 @@
 from pixie import PIXIECompiler, TranslationUnit, ExportConfiguration
 from pixie.tests.support import PixieTestCase
-from pixie.cpus import x86
 from numpy.core._multiarray_umath import __cpu_features__
 import ctypes
 import unittest
@@ -33,14 +32,16 @@ class TestIsaDispatch(PixieTestCase):
                                  symbol_name='_Z3fooPdS_',
                                  signature='void(double*, double*, double*)',)
 
-        cls._targets_features = (x86.sse3, x86.avx)
+        target_descr = cls.default_test_config()
+        cls._target_descr = target_descr
 
+        bfeat = target_descr.baseline_target.features
         libfoo = PIXIECompiler(library_name='foo_library',
                                translation_units=tus,
                                export_configuration=export_config,
-                               baseline_cpu='nocona',
-                               baseline_features=x86.sse2,
-                               targets_features=cls._targets_features,
+                               baseline_cpu=target_descr.baseline_target.cpu,
+                               baseline_features=bfeat,
+                               targets_features=target_descr.additional_targets,
                                python_cext=True,
                                output_dir=cls.tmpdir.name)
 
@@ -69,8 +70,8 @@ class TestIsaDispatch(PixieTestCase):
             selected_isa = foo_library.__PIXIE__['selected_isa']
 
             highest_feature = None
-            targets_features_strings = [str(x).upper() for x in
-                                        self._targets_features]
+            targets_features_strings = [str(max(x.features)).upper() for x in
+                                        self._target_descr.additional_targets]
             for isa, present in __cpu_features__.items():
                 if present and isa.upper() in targets_features_strings:
                     highest_feature = isa

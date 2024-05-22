@@ -23,6 +23,7 @@ class ElfMapper(object):
         do_load_fn = ir.Function(self._mod,
                                  ir.FunctionType(ir.VoidType(), ()),
                                  name="_do_load")
+        do_load_fn.linkage = "internal"
         do_load_entry_block = do_load_fn.append_basic_block('entry_block')
         do_load_builder = ir.IRBuilder(do_load_entry_block)
 
@@ -53,6 +54,7 @@ class ElfMapper(object):
         # 2. write the address of the embedded library's handle into a global.
         dso_ctor_fn = ir.Function(self._mod, ir.FunctionType(c.types.void, ()),
                                   name="_dso_ctor")
+        dso_ctor_fn.linkage = "internal"
         dso_ctor_entry_block = dso_ctor_fn.append_basic_block('entry_block')
         dso_ctor_builder = ir.IRBuilder(dso_ctor_entry_block)
         # create the function that will do the loading of the embedded module.
@@ -73,6 +75,7 @@ class ElfMapper(object):
         # Shared library constructor function:
         dso_dtor_fn = ir.Function(self._mod, ir.FunctionType(c.types.void, ()),
                                   name="_dso_dtor")
+        dso_dtor_fn.linkage = "internal"
         dso_dtor_entry_block = dso_dtor_fn.append_basic_block('entry_block')
         dso_dtor_builder = ir.IRBuilder(dso_dtor_entry_block)
         _handle = self._mod.get_global(self._embedded_libhandle_name)

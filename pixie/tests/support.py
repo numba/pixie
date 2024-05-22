@@ -3,11 +3,13 @@ from llvmlite import binding as llvm
 import tempfile
 import contextlib
 import os
+import platform
 import sys
 import subprocess
 import unittest
 from functools import lru_cache
 import types as pytypes
+from pixie.targets.common import TargetDescription
 
 # NOTE: This is copied from:
 # https://github.com/numba/numba/blob/04ebc63fe1dd1efd5a68cc9caf8f245404d99fa7/numba/tests/support.py#L754  # noqa: E501
@@ -202,6 +204,22 @@ class PixieTestCase(TestCase):
                                  out, err, popen.returncode)
         return out, err, popen.returncode
 
+    @classmethod
+    def default_test_config(cls, triple=None):
+        # this just encodes some defaults for testing purposes
+        if triple is None:
+            triple = llvm.get_process_triple()
+
+        arch = triple.split("-")[0]
+        if arch == "x86_64":
+            from pixie.targets.x86_64 import cpus
+            return TargetDescription(triple,
+                                     cpus.nocona,
+                                     "sse2",
+                                     ("sse3", "avx2", "avx512f"))
+        else:
+            raise ValueError(f"Unsupported triple: '{triple}'.")
+
 
 @lru_cache
 def _has_clang():
@@ -225,3 +243,7 @@ needs_clang = skipUnless(_has_clang(), "Test needs clang")
 # with this environment variable set.
 _exec_cond = os.environ.get('SUBPROC_TEST', None) == '1'
 needs_subprocess = unittest.skipUnless(_exec_cond, "needs subprocess harness")
+
+
+x86_64_only = unittest.skipIf(platform.machine() != 'x86_64',
+                              'x86_64 only test')

@@ -44,6 +44,7 @@ def _generate_standard_binding(builder, libname, function_name, resty, argtys,
     libandfn = f"{libname}.{function_name}"
     if builder.module.globals.get(libandfn, None) is None:
         fn = get_or_insert_function(builder.module, fnty, libandfn)
+        fn.linkage = "internal"
         block = fn.append_basic_block(f"{function_name}_impl")
         local_builder = ir.IRBuilder(block)
         c_fn = get_or_insert_function(builder.module, fnty, function_name)
@@ -82,6 +83,7 @@ def _open(builder, _path, _oflag, *varargs):
     fnty = ir.FunctionType(c.types.int, (_path.type, _oflag.type,),
                            var_arg=True)
     fn = get_or_insert_function(builder.module, fnty, "libc.open")
+    fn.linkage = "internal"
     block = fn.append_basic_block('open_impl')
     local_builder = ir.IRBuilder(block)
     c_fn = get_or_insert_function(builder.module, fnty, "open")
@@ -139,6 +141,7 @@ def _exit(builder, _status):
     assert _status.type == c.types.int, _status.type
     fnty = ir.FunctionType(c.types.void, (_status.type,))
     fn = get_or_insert_function(builder.module, fnty, "libc.exit")
+    fn.linkage = "internal"
     block = fn.append_basic_block('exit_impl')
     local_builder = ir.IRBuilder(block)
     c_fn = get_or_insert_function(builder.module, fnty, "exit")
@@ -153,6 +156,7 @@ def _getenv(builder, _name):
 
     if builder.module.globals.get('libc.getenv', None) is None:
         fn = get_or_insert_function(builder.module, fnty, "libc.getenv")
+        fn.linkage = "internal"
         block = fn.append_basic_block('getenv_impl')
         local_builder = ir.IRBuilder(block)
         c_fn = get_or_insert_function(builder.module, fnty, "getenv")
@@ -172,6 +176,7 @@ def _mkstemp(builder, _template):
 
     if builder.module.globals.get('libc.mkstemp', None) is None:
         fn = get_or_insert_function(builder.module, fnty, "libc.mkstemp")
+        fn.linkage = "internal"
         block = fn.append_basic_block('mkstemp_impl')
         local_builder = ir.IRBuilder(block)
         c_fn = get_or_insert_function(builder.module, fnty, "mkstemp")
@@ -211,6 +216,7 @@ def _write(builder, _fd, _buf, _count):
 
     fnty = ir.FunctionType(c.stddef.size_t, (_fd.type, _buf.type, _count.type))
     fn = get_or_insert_function(builder.module, fnty, "libc.write")
+    fn.linkage = "internal"
     block = fn.append_basic_block('write_impl')
     local_builder = ir.IRBuilder(block)
     c_fn = get_or_insert_function(builder.module, fnty, "write")
@@ -222,6 +228,7 @@ def _write(builder, _fd, _buf, _count):
 def _getpid(builder,):
     fnty = ir.FunctionType(c.sys.types.pid_t, ())
     fn = get_or_insert_function(builder.module, fnty, "libc.getpid")
+    fn.linkage = "internal"
     block = fn.append_basic_block('getpid_impl')
     local_builder = ir.IRBuilder(block)
     c_fn = get_or_insert_function(builder.module, fnty, "getpid")
@@ -236,6 +243,7 @@ def _ftruncate(builder, _flides, _length):
 
     fnty = ir.FunctionType(c.types.int, (_flides.type, _length.type,))
     fn = get_or_insert_function(builder.module, fnty, "libc.ftruncate")
+    fn.linkage = "internal"
     block = fn.append_basic_block('ftruncate_impl')
     local_builder = ir.IRBuilder(block)
     c_fn = get_or_insert_function(builder.module, fnty, "ftruncate")
@@ -252,6 +260,7 @@ def _readlink(builder, _path, _buf, _bufsize):
     fnty = ir.FunctionType(c.stddef.size_t, (_path.type, _buf.type,
                                              _bufsize.type))
     fn = get_or_insert_function(builder.module, fnty, "libc.readlink")
+    fn.linkage = "internal"
     block = fn.append_basic_block('readlink_impl')
     local_builder = ir.IRBuilder(block)
     c_fn = get_or_insert_function(builder.module, fnty, "readlink")
@@ -265,6 +274,7 @@ def _unlink(builder, _path):
 
     fnty = ir.FunctionType(c.stddef.size_t, (_path.type,))
     fn = get_or_insert_function(builder.module, fnty, "libc.unlink")
+    fn.linkage = "internal"
     block = fn.append_basic_block('unlink_impl')
     local_builder = ir.IRBuilder(block)
     c_fn = get_or_insert_function(builder.module, fnty, "unlink")
@@ -282,6 +292,7 @@ def _printf(builder, _fmt, *varargs):
 
     if builder.module.globals.get('libc.printf', None) is None:
         fn = get_or_insert_function(builder.module, outer_fnty, "libc.printf")
+        fn.linkage = "internal"
         block = fn.append_basic_block('printf_impl')
         local_builder = ir.IRBuilder(block)
 
@@ -329,6 +340,7 @@ def _snprintf(builder,  _str, _size, _format, *varargs):
 
     if builder.module.globals.get('libc.snprintf', None) is None:
         fn = get_or_insert_function(builder.module, outer_fnty, "libc.snprintf")
+        fn.linkage = "internal"
         block = fn.append_basic_block('snprintf_impl')
         local_builder = ir.IRBuilder(block)
 
@@ -370,6 +382,7 @@ def _perror(builder, _s):
     fnty = ir.FunctionType(c.types.void, (_s.type,))
     if builder.module.globals.get('libc.perror', None) is None:
         fn = get_or_insert_function(builder.module, fnty, "libc.perror")
+        fn.linkage = "internal"
         block = fn.append_basic_block('perror_impl')
         local_builder = ir.IRBuilder(block)
         c_fn = get_or_insert_function(builder.module, fnty, "perror")
@@ -393,6 +406,7 @@ def _memset(builder, _b, _c, _len):
     # llvmlite binds this via 2 args, the pointer and the type of the length
     if builder.module.globals.get('libc.memset', None) is None:
         fn = get_or_insert_function(builder.module, fnty, "libc.memset")
+        fn.linkage = "internal"
         block = fn.append_basic_block('memset_impl')
         local_builder = ir.IRBuilder(block)
         intrin_fn = local_builder.module.declare_intrinsic('llvm.memset',
@@ -416,6 +430,7 @@ def _strncmp(builder, _s1, _s2, _n):
     fnty = ir.FunctionType(c.types.int, (_s1.type, _s2.type, _n.type))
     if builder.module.globals.get('libc.strncmp', None) is None:
         fn = get_or_insert_function(builder.module, fnty, "libc.strncmp")
+        fn.linkage = "internal"
         block = fn.append_basic_block('strncmp_impl')
         local_builder = ir.IRBuilder(block)
         c_fn = get_or_insert_function(builder.module, fnty, "strncmp")
@@ -435,6 +450,7 @@ def _strncpy(builder, _dst, _src, _len):
     fnty = ir.FunctionType(c.types.int, (_dst.type, _src.type, _len.type))
     if builder.module.globals.get('libc.strncpy', None) is None:
         fn = get_or_insert_function(builder.module, fnty, "libc.strncpy")
+        fn.linkage = "internal"
         block = fn.append_basic_block('strncpy_impl')
         local_builder = ir.IRBuilder(block)
         c_fn = get_or_insert_function(builder.module, fnty, "strncpy")
@@ -465,6 +481,7 @@ def _dlopen(builder, _path, _mode):
     assert _mode.type == c.types.int, _mode.type
     fnty = ir.FunctionType(c.types.voidptr, (_path.type, _mode.type))
     fn = get_or_insert_function(builder.module, fnty, "libdl.dlopen")
+    fn.linkage = "internal"
     block = fn.append_basic_block('dlopen_impl')
     local_builder = ir.IRBuilder(block)
     c_fn = get_or_insert_function(builder.module, fnty, "dlopen")
@@ -476,6 +493,7 @@ def _dlopen(builder, _path, _mode):
 def _dlerror(builder,):
     fnty = ir.FunctionType(c.types.charptr, ())
     fn = get_or_insert_function(builder.module, fnty, "libdl.dlerror")
+    fn.linkage = "internal"
     block = fn.append_basic_block('dlerror_impl')
     local_builder = ir.IRBuilder(block)
     c_fn = get_or_insert_function(builder.module, fnty, "dlerror")
@@ -488,6 +506,7 @@ def _dlsym(builder, _handle, _symbol):
     assert _symbol.type == c.types.charptr, _symbol.type
     fnty = ir.FunctionType(c.types.voidptr, (_handle.type, _symbol.type))
     fn = get_or_insert_function(builder.module, fnty, "libdl.dlsym")
+    fn.linkage = "internal"
     block = fn.append_basic_block('dlsym_impl')
     local_builder = ir.IRBuilder(block)
     c_fn = get_or_insert_function(builder.module, fnty, "dlsym")
@@ -500,6 +519,7 @@ def _dlclose(builder, _handle):
     assert _handle.type == c.types.voidptr, _handle.type
     fnty = ir.FunctionType(c.types.int, (_handle.type,))
     fn = get_or_insert_function(builder.module, fnty, "libdl.dlclose")
+    fn.linkage = "internal"
     block = fn.append_basic_block('dlclose_impl')
     local_builder = ir.IRBuilder(block)
     c_fn = get_or_insert_function(builder.module, fnty, "dlclose")

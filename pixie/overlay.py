@@ -95,6 +95,7 @@ def bootstrap(obj):
 
 def main(PIXIE_payload, obj):
     import importlib
+    import importlib.util
     sbs_name = f'{obj.__name__}_pixie_specialized'
     specialized_mod = None
     try:
@@ -124,8 +125,9 @@ def main(PIXIE_payload, obj):
                    "not be used.")
             warnings.warn(msg)
 
+    spec = importlib.util.find_spec(obj.__name__)
     import ctypes
-    DSO = ctypes.CDLL(obj.__file__)
+    DSO = ctypes.CDLL(spec.origin)
     pixie_dict_raw = PIXIE_payload["__PIXIE__"]
     func_dict = PIXIE_payload["__PIXIE_assemblers__"]
     fns = {}
