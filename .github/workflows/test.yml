@@ -29,9 +29,6 @@ jobs:
         shell: bash -l {0}
         run: |
           conda install python=3.12 pytest coverage numpy numba
-      - name : Display packages
-        run: |
-          python -m numba -s
       - name: Install numba-pixie with pip
         shell: bash -l {0}
         run: |

@@ -19,7 +19,7 @@ except ImportError:
 min_python_version = "3.9"
 max_python_version = "3.13"  # exclusive
 min_llvmlite_version = "0.39"
-max_llvmlite_version = "0.42"
+max_llvmlite_version = "0.43"
 
 if sys.platform.startswith('linux'):
     # Make wheels without libpython
