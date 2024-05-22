@@ -16,7 +16,7 @@ except ImportError:
         pass
 
 
-min_python_version = "3.8"
+min_python_version = "3.9"
 max_python_version = "3.13"  # exclusive
 min_llvmlite_version = "0.39"
 max_llvmlite_version = "0.42"
@@ -80,10 +80,10 @@ metadata = dict(
         "Operating System :: OS Independent",
         "Programming Language :: Python",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
         "Topic :: Software Development :: Compilers",
     ],
     url="",
