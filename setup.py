@@ -69,9 +69,8 @@ install_requires = [
 ]
 
 metadata = dict(
-    name='pixie',
-    description=("Create C extensions containing portable information to"
-                 "permit recompilation/inclusion."),
+    name='numba-pixie',
+    description=("Creates performance portable libraries with embedded source representations."),
     version=versioneer.get_version(),
     classifiers=[
         "Development Status :: 3 - Alpha",
