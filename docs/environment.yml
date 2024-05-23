@@ -1,0 +1,10 @@
+name: pixie-docs
+channels:
+  - defaults
+
+dependencies:
+  - python=3.12
+  - pip
+  - setuptools
+  - sphinx
+  - sphinx-rtd-theme
