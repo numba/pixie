@@ -1,0 +1,42 @@
+{% set name = "pixie" %}
+# {% set version = versioneer.get_version() %}
+{% set version = "0.0.1" %}
+
+package:
+   name: {{ name }}
+   version: {{ version }}
+
+source:
+   path: ../../..
+
+build:
+  number: 1
+  script: python -m pip install .
+  noarch: python
+
+requirements:
+  # build and run dependencies are duplicated to avoid setuptools issues
+  # when we also set install_requires in setup.py
+  build:
+    - python
+    - numpy
+    - llvmlite
+    - setuptools
+  run:
+    - python
+    - numpy
+    - llvmlite
+    - setuptools
+
+test:
+  requires:
+    - pytest
+    - setuptools
+    - numpy=1.26
+    - numba
+
+about:
+  home: https://github.com/numba/pixie
+  license: BSD
+  license_file: LICENSE
+  summary: Create C extensions containing portable information to permit recompilation/inclusion.
