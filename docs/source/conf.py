@@ -5,11 +5,16 @@
 
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
+import sys
+from os.path import dirname, join
+
+sys.path.insert(0, join(dirname(__file__), ".."))
+from pixie._version import get_versions
 
 project = 'pixie'
 copyright = '2024, Numba Developers'
 author = 'Numba Developers'
-release = '0.0.1'
+release = get_versions()['version']
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

@@ -6,7 +6,5 @@ dependencies:
   - python=3.12
   - pip
   - setuptools
-  - numpy
   - sphinx
-  - pip:
-    - sphinx-bootstrap-theme
+  - sphinx-rtd-theme
