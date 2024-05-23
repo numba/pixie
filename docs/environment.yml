@@ -6,4 +6,4 @@ dependencies:
   - llvmlite
   - setuptools
   - sphinx
-  - sphinx-rtd-theme
+  - sphinx_rtd_theme
