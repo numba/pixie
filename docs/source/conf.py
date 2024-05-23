@@ -6,9 +6,9 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 import sys
-from os.path import dirname, join
+import os
 
-sys.path.insert(0, join(dirname(__file__), ".."))
+sys.path.insert(0, os.path.abspath(os.path.join("..", "..")))
 from pixie._version import get_versions
 
 project = 'pixie'
@@ -30,4 +30,4 @@ language = 'English'
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
 html_theme = 'sphinx_rtd_theme'
-html_static_path = ['_static']
+#html_static_path = ['_static']
