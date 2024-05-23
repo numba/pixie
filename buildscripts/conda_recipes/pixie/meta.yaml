@@ -36,4 +36,4 @@ about:
   home: https://github.com/numba/pixie
   license: BSD
   license_file: LICENSE
-  summary: Create C extensions containing portable information to permit recompilation/inclusion.
+  summary: Creates performance portable libraries with embedded source representations.
