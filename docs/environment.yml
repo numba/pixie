@@ -1,0 +1,12 @@
+name: pixie-docs
+channels:
+  - defaults
+
+dependencies:
+  - python=3.12
+  - pip
+  - setuptools
+  - numpy
+  - sphinx
+  - pip:
+    - sphinx-bootstrap-theme
