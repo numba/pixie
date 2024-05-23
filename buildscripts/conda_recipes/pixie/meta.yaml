@@ -1,10 +1,9 @@
 {% set name = "pixie" %}
-# {% set version = versioneer.get_version() %}
-{% set version = "0.0.1" %}
+{% set VERSION_SUFFIX = "" %} # debug version suffix, appended to the version
 
 package:
    name: {{ name }}
-   version: {{ version }}
+   version: {{ "%s%s" % (environ.get('GIT_DESCRIBE_TAG', ''), VERSION_SUFFIX) }}
 
 source:
    path: ../../..
@@ -19,12 +18,10 @@ requirements:
   # when we also set install_requires in setup.py
   build:
     - python
-    - numpy
     - llvmlite
     - setuptools
   run:
     - python
-    - numpy
     - llvmlite
     - setuptools
 
@@ -32,7 +29,7 @@ test:
   requires:
     - pytest
     - setuptools
-    - numpy=1.26
+    - numpy
     - numba
 
 about:
