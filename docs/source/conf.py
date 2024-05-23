@@ -6,9 +6,9 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 import sys
-from os.path import dirname, join
+import os
 
-sys.path.insert(0, join(dirname(__file__), ".."))
+sys.path.insert(0, os.path.abspath(os.path.join("..", "..")))
 from pixie._version import get_versions
 
 project = 'pixie'
