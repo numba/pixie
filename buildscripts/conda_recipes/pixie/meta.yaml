@@ -9,9 +9,10 @@ source:
    path: ../../..
 
 build:
-  number: 1
-  script: python -m pip install -vv .
+  number: 0
   noarch: python
+  script: {{ PYTHON }} -m pip install . -vv
+  string: {{ GIT_BUILD_STR }}
 
 requirements:
   # build and run dependencies are duplicated to avoid setuptools issues
