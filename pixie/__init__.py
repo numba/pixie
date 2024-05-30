@@ -1,6 +1,13 @@
+from importlib.metadata import version, PackageNotFoundError
 from pixie.compiler import PIXIECompiler, TranslationUnit, ExportConfiguration
 
 __all__ = (PIXIECompiler, TranslationUnit, ExportConfiguration)
 
-from . import _version
-__version__ = _version.get_versions()['version']
+try:
+    __version__ = version("numba-pixie")
+except PackageNotFoundError:
+    try:
+        from setuptools_scm import get_version
+        __version__ = get_version()
+    except ImportError:
+        raise NotImplementedError("unable to determine version at runtime")
