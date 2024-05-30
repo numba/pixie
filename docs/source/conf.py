@@ -9,12 +9,12 @@ import sys
 import os
 
 sys.path.insert(0, os.path.abspath(os.path.join("..", "..")))
-from pixie._version import get_versions
+from pixie import __version__
 
 project = 'pixie'
 copyright = '2024, Numba Developers'
 author = 'Numba Developers'
-release = get_versions()['version']
+release = __version__
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
