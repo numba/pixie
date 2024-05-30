@@ -9,6 +9,11 @@ build:
   tools:
     python: "mambaforge-latest"
 
+python:
+  install:
+    - method: pip
+      path: .
+
 sphinx:
   configuration: docs/source/conf.py
   fail_on_warning: true
