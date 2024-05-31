@@ -61,7 +61,7 @@ class TestCython(PixieTestCase):
                                baseline_features=bfeat,
                                targets_features=target_descr.additional_targets,
                                python_cext=True,
-                               output_dir='.')
+                               output_dir=cls.tmpdir.name)
 
         libfoo.compile()
 
