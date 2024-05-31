@@ -23,9 +23,6 @@ requirements:
   host:
     - python
     - setuptools_scm
-  build:
-    - python
-    - llvmlite
   run:
     - python
     - llvmlite
