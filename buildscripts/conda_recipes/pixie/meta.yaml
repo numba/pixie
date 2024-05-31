@@ -27,6 +27,8 @@ requirements:
     - llvmlite
 
 test:
+  imports:
+    - pixie
   requires:
     - pytest
     - numpy
