@@ -20,8 +20,6 @@ build:
 
 
 requirements:
-  # build and run dependencies are duplicated to avoid setuptools issues
-  # when we also set install_requires in setup.py
   host:
     - python
     - setuptools_scm
