@@ -20,16 +20,13 @@ requirements:
   build:
     - python
     - llvmlite
-    - setuptools
   run:
     - python
     - llvmlite
-    - setuptools
 
 test:
   requires:
     - pytest
-    - setuptools
     - numpy
     - numba
 
