@@ -38,6 +38,11 @@ test:
 
 about:
   home: https://github.com/numba/pixie
-  license: BSD
+  dev_url: https://github.com/numba/pixie
+  doc_url: https://numba-pixie.readthedocs.io/
+  license: BSD-2-Clause
+  license_family: BSD
   license_file: LICENSE
   summary: Creates performance portable libraries with embedded source representations.
+  description: |
+    Creates performance portable libraries with embedded source representations.
