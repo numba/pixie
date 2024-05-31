@@ -23,7 +23,7 @@ classifiers = [
     "Topic :: Software Development :: Compilers",
 ]
 dependencies = [
-    "llvmlite >=0.39,<0.43",
+    "llvmlite >=0.39,<0.43", "setuptools"
 ]
 [project.urls]
 "Repository" = "https://github.com/numba/pixie"

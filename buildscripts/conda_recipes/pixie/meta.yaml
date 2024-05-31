@@ -25,6 +25,7 @@ requirements:
   run:
     - python
     - llvmlite
+    - setuptools
 
 test:
   imports:
