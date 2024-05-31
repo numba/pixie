@@ -37,6 +37,8 @@ test:
     - pytest
     - numpy
     - numba
+  commands:
+    - pytest --pyargs pixie
 
 about:
   home: https://github.com/numba/pixie
