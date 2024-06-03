@@ -9,7 +9,6 @@ build:
   tools:
     python: "mambaforge-latest"
   commands:
-    - "conda update pip"
     - "python -m pip install -vv --no-deps --no-build-isolation ."
 
 sphinx:
