@@ -10,7 +10,7 @@ build:
     python: "mambaforge-latest"
   commands:
     - "conda update pip"
-    - "pip -vv --no-deps --no-build-isolation ."
+    - "python -m pip install -vv --no-deps --no-build-isolation ."
 
 sphinx:
   configuration: docs/source/conf.py
