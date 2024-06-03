@@ -8,11 +8,8 @@ build:
   os: ubuntu-22.04
   tools:
     python: "mambaforge-latest"
-
-python:
-  install:
-    - method: pip -vv --no-deps --no-build-isolation
-      path: .
+  commands:
+    - "pip -vv --no-deps --no-build-isolation ."
 
 sphinx:
   configuration: docs/source/conf.py
