@@ -4,5 +4,6 @@ channels:
 
 dependencies:
   - llvmlite
+  - setuptools
   - sphinx
   - sphinx-rtd-theme

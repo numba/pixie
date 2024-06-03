@@ -11,7 +11,7 @@ build:
 
 python:
   install:
-    - method: pip
+    - method: pip -vv --no-deps --no-build-isolation
       path: .
 
 sphinx:
