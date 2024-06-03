@@ -8,7 +8,8 @@ build:
   os: ubuntu-22.04
   tools:
     python: "mambaforge-latest"
-  commands:
+  jobs:
+    pre_install:
     - "python -m pip install -vv --no-deps --no-build-isolation ."
 
 sphinx:
