@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools", "setuptools_scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "numba-pixie"
+dynamic = ["version"]
+description = "Creates performance portable libraries with embedded source representations."
+readme = "README.rst"
+license = {text = "BSD-2-Clause"}
+requires-python = ">=3.9"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: BSD License",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Compilers",
+]
+dependencies = [
+    "llvmlite >=0.39,<0.43", "setuptools"
+]
+[project.urls]
+"Repository" = "https://github.com/numba/pixie"
+"Homepage" = "https://github.com/numba/pixie"
+"Documentation" = "https://numba-pixie.readthedocs.io/"
+"Issue Tracker" = "https://github.com/numba/pixie/issues"
+
+[tool.setuptools.packages]
+find = {}
+
+[tool.setuptools_scm]

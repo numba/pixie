@@ -3,8 +3,7 @@ channels:
   - defaults
 
 dependencies:
-  - python=3.12
-  - setuptools
   - llvmlite
+  - setuptools
   - sphinx
   - sphinx-rtd-theme

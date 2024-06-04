@@ -8,6 +8,9 @@ build:
   os: ubuntu-22.04
   tools:
     python: "mambaforge-latest"
+  jobs:
+    pre_install:
+    - "python -m pip install -vv --no-deps --no-build-isolation ."
 
 sphinx:
   configuration: docs/source/conf.py

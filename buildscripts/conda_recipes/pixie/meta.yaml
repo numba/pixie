@@ -1,40 +1,50 @@
-{% set name = "pixie" %}
-{% set VERSION_SUFFIX = "" %} # debug version suffix, appended to the version
+{% set __NAME__ = "pixie" %}
+{% set __VERSION_SUFFIX__ = "" %} # debug version suffix, appended to the version
+{% set __VERSION__ =  "%s%s" % (environ.get('GIT_DESCRIBE_TAG', ''), __VERSION_SUFFIX__) %}
 
 package:
-   name: {{ name }}
-   version: {{ "%s%s" % (environ.get('GIT_DESCRIBE_TAG', ''), VERSION_SUFFIX) }}
+   name: {{ __NAME__ }}
+   version: {{ __VERSION__ }}
 
 source:
    path: ../../..
 
+
 build:
   number: 0
   noarch: python
-  script: {{ PYTHON }} -m pip install . -vv
+  script: {{ PYTHON }} -m pip install -vv --no-deps --no-build-isolation  .
   string: {{ GIT_BUILD_STR }}
+  script_env:
+    - SETUPTOOLS_SCM_PRETEND_VERSION={{__VERSION__}}
+
 
 requirements:
-  # build and run dependencies are duplicated to avoid setuptools issues
-  # when we also set install_requires in setup.py
-  build:
+  host:
     - python
-    - llvmlite
-    - setuptools
+    - setuptools_scm
   run:
     - python
     - llvmlite
     - setuptools
 
 test:
+  imports:
+    - pixie
   requires:
     - pytest
-    - setuptools
     - numpy
     - numba
+  commands:
+    - pytest --pyargs pixie
 
 about:
   home: https://github.com/numba/pixie
-  license: BSD
+  dev_url: https://github.com/numba/pixie
+  doc_url: https://numba-pixie.readthedocs.io/
+  license: BSD-2-Clause
+  license_family: BSD
   license_file: LICENSE
   summary: Creates performance portable libraries with embedded source representations.
+  description: |
+    Creates performance portable libraries with embedded source representations.
