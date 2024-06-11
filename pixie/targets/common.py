@@ -11,11 +11,15 @@ from llvmlite import binding as llvm
 
 
 class CPUEnum(Enum):
-    pass
+
+    def __str__(self):
+        return f'{self.name}'
 
 
 class FeaturesEnum(IntEnum):
-    pass
+
+    def __str__(self):
+        return f'{self.name}'
 
 
 def create_cpu_enum_for_target(triple_str):
@@ -53,10 +57,7 @@ def create_cpu_enum_for_target(triple_str):
 
     all_cpus = parse_target_info_str(target_info_str)
 
-    cpus = CPUEnum('cpus', all_cpus)
-    cpus.__str__ = lambda self: self.name
-
-    return cpus
+    return CPUEnum('cpus', all_cpus)
 
 
 class Features():

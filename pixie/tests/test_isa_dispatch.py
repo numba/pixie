@@ -77,7 +77,7 @@ class TestIsaDispatch(PixieTestCase):
                     highest_feature = isa
 
             assert highest_feature is not None
-            assert highest_feature == selected_isa
+            assert highest_feature.lower() == selected_isa
 
 
 if __name__ == '__main__':

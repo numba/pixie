@@ -9,13 +9,14 @@ from pixie.mcext import c, langref
 
 class Selector():
 
+    _DEBUG = False
+
     def __init__(self, mod, name, data):
         self._name = name
         self._mod = mod
         self._data = data
         self._ctx = Context()
         self._embedded_data = self._embed_data()
-        self._DEBUG = False
         self._debug_selector_str = self._debug_selector(mod)
 
     def _debug_selector(self, mod):

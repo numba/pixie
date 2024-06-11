@@ -254,7 +254,7 @@ class PIXIEModule(IRGenerator):
                 outfile = os.path.join(build_dir, str(uuid.uuid4().hex))
                 compiler.compile_and_link(self._single_source, outfile=outfile)
                 with open(outfile, 'rb') as f:
-                    binaries[str(max(features)).upper()] = f.read()
+                    binaries[str(max(features))] = f.read()
         return binaries
 
     def create_real_ifuncs(self, mod, embedded_libhandle_name, python_cext):

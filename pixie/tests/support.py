@@ -216,7 +216,8 @@ class PixieTestCase(TestCase):
             return TargetDescription(triple,
                                      cpus.nocona,
                                      "sse2",
-                                     ("sse3", "avx2", "avx512f"))
+                                     ("sse3", "avx2", "avx512f",
+                                      "avx512bitalg"))
         else:
             raise ValueError(f"Unsupported triple: '{triple}'.")
 

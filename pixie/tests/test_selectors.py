@@ -98,7 +98,7 @@ class TestSelectors(PixieTestCase):
     @x86_64_only
     def test_x86_isa_selector(self):
 
-        dispatch_keys = ('baseline', 'SSE2', 'SSE3', 'SSE42', 'AVX')
+        dispatch_keys = ('baseline', 'sse2', 'sse3', 'sse42', 'avx')
         expected, dispatch_data = self.gen_dispatch_and_expected(dispatch_keys)
 
         selector_class = x86CPUSelector
@@ -129,8 +129,8 @@ class TestSelectors(PixieTestCase):
         from numpy.core._multiarray_umath import __cpu_features__
         highest_feature = None
         for isa, present in __cpu_features__.items():
-            if present and isa in expected:
+            if present and isa.lower() in expected:
                 highest_feature = isa
 
         assert highest_feature is not None
-        assert extracted_embedded_dso.foo() == expected[highest_feature]
+        assert extracted_embedded_dso.foo() == expected[highest_feature.lower()]

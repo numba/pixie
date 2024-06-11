@@ -1,5 +1,5 @@
 # x86_64 target
-from enum import auto, IntEnum, Enum
+from enum import auto, Enum
 from llvmlite import ir
 from pixie.selectors import Selector
 from pixie.targets.common import create_cpu_enum_for_target, FeaturesEnum
@@ -46,53 +46,13 @@ class features(FeaturesEnum):
     avx512vnni        = 42  # noqa: E221
     avx512vbmi2       = 43  # noqa: E221
     avx512bitalg      = 44  # noqa: E221
+    avx512fp16        = 45  # noqa: E221
     feature_max       = auto()  # noqa: E221
 
-    def __str__(self):
-        return f'{self.name}'
 
-
-class cpu_features(IntEnum):
-    NONE = 0
-    # X86
-    MMX               = 1  # noqa E221
-    SSE               = 2  # noqa E221
-    SSE2              = 3  # noqa E221
-    SSE3              = 4  # noqa E221
-    SSSE3             = 5  # noqa E221
-    SSE41             = 6  # noqa E221
-    POPCNT            = 7  # noqa E221
-    SSE42             = 8  # noqa E221
-    AVX               = 9  # noqa E221
-    F16C              = 10  # noqa E221
-    XOP               = 11  # noqa E221
-    FMA4              = 12  # noqa E221
-    FMA3              = 13  # noqa E221
-    AVX2              = 14  # noqa E221
-    # AVX2 & FMA3, provides backward compatibility
-    FMA               = 15  # noqa E221
-    AVX512F           = 30  # noqa E221
-    AVX512CD          = 31  # noqa E221
-    AVX512ER          = 32  # noqa E221
-    AVX512PF          = 33  # noqa E221
-    AVX5124FMAPS      = 34  # noqa E221
-    AVX5124VNNIW      = 35  # noqa E221
-    AVX512VPOPCNTDQ   = 36  # noqa E221
-    AVX512BW          = 37  # noqa E221
-    AVX512DQ          = 38  # noqa E221
-    AVX512VL          = 39  # noqa E221
-    AVX512IFMA        = 40  # noqa E221
-    AVX512VBMI        = 41  # noqa E221
-    AVX512VNNI        = 42  # noqa E221
-    AVX512VBMI2       = 43  # noqa E221
-    AVX512BITALG      = 44  # noqa E221
-    AVX512FP16        = 45  # noqa E221
-    MAX               = auto()  # noqa E221
-
-    def __str__(self):
-        return f'{self.name}'
-
-
+# NOTE: This enum isn't used yet. It needs support for multiple ISA's supplied
+# in a single target description wiring through to here.
+#
 # These are effectively the features that NumPy cares about, see:
 # https://github.com/numpy/numpy/blob/08e2a6ede4ebb074747b50128b19c5903a47e8ad/doc/source/reference/simd/gen_features.py # noqa: E501
 # and
@@ -104,42 +64,44 @@ class cpu_features(IntEnum):
 # grouped approximately by CPU codename. This enum essentially encodes:
 # https://github.com/numpy/numpy/blob/08e2a6ede4ebb074747b50128b19c5903a47e8ad/doc/source/reference/simd/generated_tables/cpu_features.inc
 class cpu_dispatchable(Enum):
-    SSE               = (1 << cpu_features.SSE)  # noqa E221
-    SSE2              = (1 << cpu_features.SSE2)     | SSE  # noqa E221
-    SSE3              = (1 << cpu_features.SSE3)     | SSE | SSE2  # noqa E221
-    SSSE3             = (1 << cpu_features.SSE3)     | SSE | SSE2 | SSE3  # noqa E221
-    SSE41             = (1 << cpu_features.SSE41)    | SSE | SSE2 | SSE3 | SSSE3  # noqa E221
-    POPCNT            = (1 << cpu_features.POPCNT)   | SSE | SSE2 | SSE3 | SSSE3 | SSE41  # noqa E221, E501
-    SSE42             = (1 << cpu_features.SSE42)    | SSE | SSE2 | SSE3 | SSSE3 | SSE41 | POPCNT  # noqa E221, E501
-    AVX               = (1 << cpu_features.AVX)      | SSE | SSE2 | SSE3 | SSSE3 | SSE41 | POPCNT | SSE42  # noqa E221, E501
-    XOP               = (1 << cpu_features.XOP)      | SSE | SSE2 | SSE3 | SSSE3 | SSE41 | POPCNT | SSE42 | AVX  # noqa E221, E501
-    FMA4              = (1 << cpu_features.FMA4)     | SSE | SSE2 | SSE3 | SSSE3 | SSE41 | POPCNT | SSE42 | AVX  # noqa E221, E501
-    F16C              = (1 << cpu_features.F16C)     | SSE | SSE2 | SSE3 | SSSE3 | SSE41 | POPCNT | SSE42 | AVX  # noqa E221, E501
-    FMA3              = (1 << cpu_features.FMA3)     | SSE | SSE2 | SSE3 | SSSE3 | SSE41 | POPCNT | SSE42 | AVX | F16C  # noqa E221, E501
-    AVX2              = (1 << cpu_features.AVX2)     | SSE | SSE2 | SSE3 | SSSE3 | SSE41 | POPCNT | SSE42 | AVX | F16C  # noqa E221, E501
-    AVX512F           = (1 << cpu_features.AVX512F)  | SSE | SSE2 | SSE3 | SSSE3 | SSE41 | POPCNT | SSE42 | AVX | F16C | FMA3 | AVX2  # noqa E221, E501
-    AVX512CD          = (1 << cpu_features.AVX512CD) | SSE | SSE2 | SSE3 | SSSE3 | SSE41 | POPCNT | SSE42 | AVX | F16C | FMA3 | AVX2 | AVX512F  # noqa E221, E501
+    sse               = (1 << features.sse)  # noqa E221
+    sse2              = (1 << features.sse2)     | sse  # noqa E221
+    sse3              = (1 << features.sse3)     | sse | sse2  # noqa E221
+    ssse3             = (1 << features.sse3)     | sse | sse2 | sse3  # noqa E221
+    sse41             = (1 << features.sse41)    | sse | sse2 | sse3 | ssse3  # noqa E221
+    popcnt            = (1 << features.popcnt)   | sse | sse2 | sse3 | ssse3 | sse41  # noqa E221, E501
+    sse42             = (1 << features.sse42)    | sse | sse2 | sse3 | ssse3 | sse41 | popcnt  # noqa E221, E501
+    avx               = (1 << features.avx)      | sse | sse2 | sse3 | ssse3 | sse41 | popcnt | sse42  # noqa E221, E501
+    xop               = (1 << features.xop)      | sse | sse2 | sse3 | ssse3 | sse41 | popcnt | sse42 | avx  # noqa E221, E501
+    fma4              = (1 << features.fma4)     | sse | sse2 | sse3 | ssse3 | sse41 | popcnt | sse42 | avx  # noqa E221, E501
+    f16c              = (1 << features.f16c)     | sse | sse2 | sse3 | ssse3 | sse41 | popcnt | sse42 | avx  # noqa E221, E501
+    fma3              = (1 << features.fma3)     | sse | sse2 | sse3 | ssse3 | sse41 | popcnt | sse42 | avx | f16c  # noqa E221, E501
+    avx2              = (1 << features.avx2)     | sse | sse2 | sse3 | ssse3 | sse41 | popcnt | sse42 | avx | f16c  # noqa E221, E501
+    avx512f           = (1 << features.avx512f)  | sse | sse2 | sse3 | ssse3 | sse41 | popcnt | sse42 | avx | f16c | fma3 | avx2  # noqa E221, E501
+    avx512cd          = (1 << features.avx512cd) | sse | sse2 | sse3 | ssse3 | sse41 | popcnt | sse42 | avx | f16c | fma3 | avx2 | avx512f  # noqa E221, E501
     # X86 CPU Groups
     # Knights Landing (F,CD,ER,PF)
-    AVX512_KNL        = AVX512CD | (1 << cpu_features.AVX512ER) | (1 << cpu_features.AVX512PF)  # noqa E221, E501
+    avx512_knl        = avx512cd | (1 << features.avx512er) | (1 << features.avx512pf)  # noqa E221, E501
     # Knights Mill    (F,CD,ER,PF,4FMAPS,4VNNIW,VPOPCNTDQ), which is
     #                 AVX512_KNL + (4FMAPS,4VNNIW,VPOPCNTDQ)
-    AVX512_KNM        = AVX512_KNL | (1 << cpu_features.AVX5124FMAPS) | (1 << cpu_features.AVX5124VNNIW) | (1 << cpu_features.AVX512VPOPCNTDQ)  # noqa E221, E501
+    avx512_knm        = avx512_knl | (1 << features.avx5124fmaps) | (1 << features.avx5124vnniw) | (1 << features.avx512vpopcntdq)  # noqa E221, E501
     # Skylake-X       (F,CD,BW,DQ,VL)
-    AVX512_SKX        = AVX512CD | (1 << cpu_features.AVX512VL) | (1 << cpu_features.AVX512BW) | (1 << cpu_features.AVX512DQ)  # noqa E221, E501
+    avx512_skx        = avx512cd | (1 << features.avx512vl) | (1 << features.avx512bw) | (1 << features.avx512dq)  # noqa E221, E501
     # Cascade Lake    (F,CD,BW,DQ,VL,VNNI), which is AVX512_SKX + VNNI
-    AVX512_CLX        = AVX512_SKX | (1 << cpu_features.AVX512VNNI)  # noqa E221
+    avx512_clx        = avx512_skx | (1 << features.avx512vnni)  # noqa E221
     # Cannon Lake     (F,CD,BW,DQ,VL,IFMA,VBMI), which is
     #                 AVX512_SKX + (IFMA, VBMI)
-    AVX512_CNL        = AVX512_SKX | (1 << cpu_features.AVX512IFMA) | (1 << cpu_features.AVX512VBMI)  # noqa E221, E501
+    avx512_cnl        = avx512_skx | (1 << features.avx512ifma) | (1 << features.avx512vbmi)  # noqa E221, E501
     # Ice Lake        (F,CD,BW,DQ,VL,IFMA,VBMI,VNNI,VBMI2,BITALG,VPOPCNTDQ),
     #                 which is AVX512_CNL + (VBMI2,BITALG,VPOPCNTDQ)
-    AVX512_ICL        = AVX512_CNL | (1 << cpu_features.AVX512VBMI2) | (1 << cpu_features.AVX512BITALG) | (1 << cpu_features.AVX512VPOPCNTDQ)  # noqa E221, E501
+    avx512_icl        = avx512_cnl | (1 << features.avx512vbmi2) | (1 << features.avx512bitalg) | (1 << features.avx512vpopcntdq)  # noqa E221, E501
     # Sapphire Rapids (Ice Lake + AVX512FP16)
-    AVX512_SPR        = AVX512_ICL | (1 << cpu_features.AVX512FP16)  # noqa E221
+    avx512_spr        = avx512_icl | (1 << features.avx512fp16)  # noqa E221
 
 
 class x86CPUSelector(Selector):
+
+    _DEBUG = False
 
     def selector_impl(self, builder):
         # based on https://github.com/numpy/numpy/blob/08e2a6ede4ebb074747b50128b19c5903a47e8ad/numpy/core/src/common/npy_cpu_features.c # noqa: E501
@@ -149,7 +111,7 @@ class x86CPUSelector(Selector):
             supplied_variants = set(self._data.keys())
             assert 'baseline' in supplied_variants, supplied_variants
             supplied_variants.remove('baseline')
-            memb = cpu_dispatchable.__members__
+            memb = features.__members__
 
             for k in supplied_variants:
                 assert k in memb, f"{k} not in {memb.keys()}"
@@ -241,7 +203,8 @@ class x86CPUSelector(Selector):
 
         def cpu_release_order(*args):
             (feat,) = args
-            return tuple(cpu_dispatchable.__members__.keys()).index(feat)
+            # from pixie.targets.x86_64 import features
+            return features[feat.lower()]
 
         supplied_variants = set(self._data.keys()) ^ {'baseline'}
         variant_order = sorted(list(supplied_variants), key=cpu_release_order)
@@ -370,12 +333,12 @@ class x86CPUSelector(Selector):
             builder.ret(result)
             return func
 
-        def probe_and_decode(cpuid_arg, features, features_vect):
+        def probe_and_decode(cpuid_arg, lfeatures, features_vect):
             i32_cpuid_arg = ir.Constant(i32, cpuid_arg)
             [builder.store(i32_zero, x) for x in r0to4]
             builder.call(func_cpuid_probe, (i32_cpuid_arg, *r0to4))
 
-            for item in features:
+            for item in lfeatures:
                 feat_id, reg, shift = item
                 function = generate_feature_check(feat_id.name, shift)
                 result = builder.call(function, (builder.load(r0to4[reg]),))
@@ -386,17 +349,17 @@ class x86CPUSelector(Selector):
 
         # Create CPU SSE probes
         # cpuid arg = 1
-        features = [(cpu_features.MMX,    3, 23),
-                    (cpu_features.SSE,    3, 25),
-                    (cpu_features.SSE2,   3, 26),
-                    (cpu_features.SSE3,   2, 0),
-                    (cpu_features.SSSE3,  2, 9),
-                    (cpu_features.SSE41,  2, 19),
-                    (cpu_features.POPCNT, 2, 23),
-                    (cpu_features.SSE42,  2, 20),
-                    (cpu_features.F16C,   2, 29),]
+        lfeatures = [(features.mmx,    3, 23),
+                     (features.sse,    3, 25),
+                     (features.sse2,   3, 26),
+                     (features.sse3,   2, 0),
+                     (features.ssse3,  2, 9),
+                     (features.sse41,  2, 19),
+                     (features.popcnt, 2, 23),
+                     (features.sse42,  2, 20),
+                     (features.f16c,   2, 29),]
 
-        probe_and_decode(1, features, features_vect)
+        probe_and_decode(1, lfeatures, features_vect)
 
         # This is a synopsis of the logic suggested in the "Intel 64 and IA-32
         # Architectures Software Developer's Manual" Order Number 325462-083US
@@ -436,39 +399,39 @@ class x86CPUSelector(Selector):
         with builder.if_then(builder.not_(HAVE_AVX)):
             self.debug_print(builder, "No AVX CPU support, exit now.\n")
             builder.branch(tree_exit)
-        idx = ir.Constant(i64, cpu_features.AVX.value)
+        idx = ir.Constant(i64, features.avx.value)
         bit_loc = builder.shl(builder.zext(HAVE_AVX, i64), idx)
         mask = builder.or_(builder.load(features_vect), bit_loc)
         builder.store(mask, features_vect)
 
         # Create AMD extension probes
         # cpuid arg = 0x80000001
-        features = [(cpu_features.XOP,    2, 11),
-                    (cpu_features.FMA4,   2, 16),]
-        probe_and_decode(0x80000001, features, features_vect)
+        lfeatures = [(features.xop,    2, 11),
+                     (features.fma4,   2, 16),]
+        probe_and_decode(0x80000001, lfeatures, features_vect)
 
         # Create AVX2 and AVX512F extension probes
         # cpuid arg = 7
-        features = [(cpu_features.AVX2,   1, 5),
-                    (cpu_features.AVX512F,   1, 16),
-                    (cpu_features.AVX512CD,   1, 28),
-                    (cpu_features.AVX512PF,   1, 26),
-                    (cpu_features.AVX512ER,   1, 27),
-                    (cpu_features.AVX512VPOPCNTDQ,   2, 14),
-                    (cpu_features.AVX5124VNNIW,   3, 2),
-                    (cpu_features.AVX5124FMAPS,   3, 3),
-                    (cpu_features.AVX512DQ,   1, 17),
-                    (cpu_features.AVX512BW,   1, 30),
-                    (cpu_features.AVX512VL,   1, 31),
-                    (cpu_features.AVX512VNNI,   2, 11),
-                    (cpu_features.AVX512IFMA,   1, 21),
-                    (cpu_features.AVX512VBMI,   2, 1),
-                    (cpu_features.AVX512VBMI2,   2, 6),
-                    (cpu_features.AVX512BITALG,   2, 12),
-                    (cpu_features.AVX512FP16,   3, 23),]
-        probe_and_decode(7, features, features_vect)
+        lfeatures = [(features.avx2,   1, 5),
+                     (features.avx512f,   1, 16),
+                     (features.avx512cd,   1, 28),
+                     (features.avx512pf,   1, 26),
+                     (features.avx512er,   1, 27),
+                     (features.avx512vpopcntdq,   2, 14),
+                     (features.avx5124vnniw,   3, 2),
+                     (features.avx5124fmaps,   3, 3),
+                     (features.avx512dq,   1, 17),
+                     (features.avx512bw,   1, 30),
+                     (features.avx512vl,   1, 31),
+                     (features.avx512vnni,   2, 11),
+                     (features.avx512ifma,   1, 21),
+                     (features.avx512vbmi,   2, 1),
+                     (features.avx512vbmi2,   2, 6),
+                     (features.avx512bitalg,   2, 12),
+                     (features.avx512fp16,   3, 23),]
+        probe_and_decode(7, lfeatures, features_vect)
 
-        self.debug_print(builder, "Features vect %x\n",
+        self.debug_print(builder, "Features vect 0x%llx\n",
                          builder.load(features_vect))
         # Jump to the tree exit.
         builder.branch(tree_exit)
@@ -486,9 +449,12 @@ class x86CPUSelector(Selector):
         # The env var escape hatch wasn't used so do the standard dispatch.
         for specific_feature in variant_order:
             disp_feat = ir.Constant(i64,
-                                    cpu_dispatchable[specific_feature].value)
-            mask = builder.and_(disp_feat, fv)
-            pred = builder.icmp_unsigned("==", mask, disp_feat)
+                                    features[specific_feature].value)
+            mask = builder.shl(ir.Constant(i64, 1), disp_feat)
+            self.debug_print(builder, "disp feat = %llx, mask = %llx\n",
+                             disp_feat, mask)
+            # does the feature vect match the mask?
+            pred = builder.icmp_unsigned("==", mask, builder.and_(mask, fv))
             with builder.if_else(pred) as (then, otherwise):
                 with then:
                     msg = f"branch checking {specific_feature}: Success\n"
@@ -498,8 +464,12 @@ class x86CPUSelector(Selector):
                 with otherwise:
                     msg = f"branch checking {specific_feature}: Failed\n"
                     self.debug_print(builder, msg)
-                    # can just return
-                    builder.ret_void()
+                    # if `found` is non-zero it's ok to just return here,
+                    # something previously matched
+                    pred = builder.icmp_unsigned("==", builder.load(found),
+                                                 ir.Constant(i8, 0))
+                    with builder.if_then(pred, likely=True):
+                        builder.ret_void()
 
         # if found is 0, didn't find anything acceptable, so return baseline,
         # this is mainly for debug, the "baseline" could just be set earlier.

@@ -52,7 +52,7 @@ class TestIsaEnvVarDispatch(PixieTestCase):
 
         libfoo.compile()
 
-    @PixieTestCase.run_test_in_subprocess(envvars={"PIXIE_USE_ISA": "SSE2"})
+    @PixieTestCase.run_test_in_subprocess(envvars={"PIXIE_USE_ISA": "sse2"})
     def test_envar_dispatch_valid(self):
         # Checks that PIXIE will dispatch so a given ISA env var, it's highly
         # unlikely to find a machine that just supports SSE2 and so this is
@@ -75,7 +75,7 @@ class TestIsaEnvVarDispatch(PixieTestCase):
 
             selected_isa = foo_library.__PIXIE__['selected_isa']
 
-            assert selected_isa == "SSE2"
+            assert selected_isa == "sse2"
 
     @needs_subprocess
     def test_impl_envar_dispatch_invalid(self):
