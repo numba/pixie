@@ -222,6 +222,7 @@ class PIXIECompiler():
         pixie_mod = PIXIEModule(self._library_name, self._translation_units,
                                 self._export_configuration,
                                 self._target_descr,
+                                opt=self._opt,
                                 uuid=self._uuid)
         # always set the bitcode to be emitted
         # set the wiring method based on platform
@@ -242,10 +243,11 @@ class PIXIECompiler():
 class PIXIEModule(IRGenerator):
 
     def __init__(self, library_name, translation_units, export_configuration,
-                 target_descr, uuid=None):
+                 target_descr, opt, uuid=None):
         self._library_name = library_name
         self._target_descr = target_descr
         self._uuid = uuid
+        self._opt = opt
 
         # convert translation units to a single module
         llvm_irs = [x._source for x in translation_units
@@ -314,7 +316,8 @@ class PIXIEModule(IRGenerator):
             compiler = SimpleCompilerDriver(cpu_name, cpu_feature)
             with tempfile.TemporaryDirectory() as build_dir:
                 outfile = os.path.join(build_dir, str(uuid.uuid4().hex))
-                compiler.compile_and_link(self._single_source, outfile=outfile)
+                compiler.compile_and_link(self._single_source, opt=self._opt,
+                                          outfile=outfile)
                 with open(outfile, 'rb') as f:
                     binaries[str(max(features))] = f.read()
         return binaries
