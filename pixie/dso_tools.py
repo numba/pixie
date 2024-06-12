@@ -314,7 +314,7 @@ class shmEmbeddedDSOHandler(EmbeddedDSOHandler):
                                                   c.types.charptr),
                                   builder.load(_oflag),
                                   builder.load(_mode))
-        self.debug_print(builder, "done shm_open on\n", shm_file_name)
+        self.debug_print(builder, "done shm_open on %s\n", shm_file_name)
 
         # ftruncate the shm_fd to the length of the bytes
         c.unistd.ftruncate(builder, shm_fd, builder.trunc(nbytes, c.types.int))

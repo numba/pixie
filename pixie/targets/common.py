@@ -60,6 +60,13 @@ def create_cpu_enum_for_target(triple_str):
     return CPUEnum('cpus', all_cpus)
 
 
+def display_cpu_names():
+    triple = llvm.get_process_triple()
+    print(f"Valid CPU names based on the current process LLVM triple: {triple}")
+    for x in create_cpu_enum_for_target(triple):
+        print(f" - {x}")
+
+
 class Features():
 
     def __init__(self, features):
@@ -177,7 +184,7 @@ class TargetDescription():
     def _canonicalize_feature(self, feat, kwarg):
         msg = (f"Feature '{feat}' is not a known feature for "
                f"target '{self.target_triple.arch}' (offending argument "
-               "supplied to {kwarg})")
+               f"supplied to {kwarg})")
         ret = None
         if isinstance(feat, str):
             resolved_feat = getattr(self.arch.features, feat, None)

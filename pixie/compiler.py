@@ -106,6 +106,8 @@ class TranslationUnit():
     # Maps to a LLVM module... Probably needs to to be consistent with C.
 
     def __init__(self, name, source):
+        if not isinstance(name, str):
+            raise TypeError(f"name must be a string, got {type(name).__name__}")
         self._name = name
         self._source = source
         if isinstance(source, str):
@@ -113,7 +115,8 @@ class TranslationUnit():
         elif isinstance(source, bytes):
             self._mod = llvm.parse_bitcode(source)
         else:
-            msg = "Expected string or bytes for source, got '{type(source)}'."
+            msg = ("Expected string or bytes for source, "
+                   f"got {type(source).__name__}.")
             raise TypeError(msg)
 
 
@@ -148,6 +151,64 @@ class PIXIECompiler():
         self._opt = opt
         self._output_dir = output_dir
 
+        if not isinstance(library_name, str):
+            msg = ("kwarg library_name should be a string, got "
+                   f"{type(library_name).__name__}")
+            raise TypeError(msg)
+
+        if library_name == "":
+            msg = ("kwarg library_name cannot be an empty string")
+            raise ValueError(msg)
+
+        if not isinstance(translation_units, (tuple, list)):
+            msg = ("kwarg translation_units should be a tuple or list, got "
+                   f"{type(translation_units).__name__}")
+            raise TypeError(msg)
+
+        if len(translation_units) == 0:
+            raise ValueError("kwarg translation_units is an empty tuple, no "
+                             "translation units were given, there is "
+                             "nothing to compile!")
+
+        if export_configuration is not None:
+            if not isinstance(export_configuration, ExportConfiguration):
+                msg = ("kwarg export_configuration must be of type None or a "
+                       "pixie.ExportConfiguration instance, got "
+                       f"{type(export_configuration).__name__}")
+                raise TypeError(msg)
+
+        if baseline_cpu == "":
+            msg = ("The baseline_cpu kwarg must be supplied and also be a "
+                   "valid cpu name.\nFor a list of valid CPU names for the "
+                   "current process, try running:\n\n"
+                   "'pixie.targets.common.display_cpu_names()'")
+            raise ValueError(msg)
+
+        if not isinstance(python_cext, bool):
+            msg = ("kwarg python_cext should be a bool type, got "
+                   f"{type(python_cext).__name__}")
+            raise TypeError(msg)
+
+        if isinstance(uuid, (str,)):
+            from uuid import UUID
+            # make sure that the string will instantiate as a UUID
+            UUID(uuid)
+        elif uuid is not None:
+            msg = ("kwarg uuid must be a string representation of a uuid4 or "
+                   "None")
+            raise TypeError(msg)
+
+        if opt not in (0, 1, 2, 3):
+            msg = ("kwarg opt must be an integer value in (0, 1, 2, 3), got "
+                   f"{opt}")
+            raise ValueError(msg)
+
+        if not isinstance(output_dir, (str, bytes, os.PathLike)):
+            msg = ("kwarg output_dir should be a string, bytes or os.PathLike, "
+                   f"got {type(output_dir).__name__}")
+            raise TypeError(msg)
+
+        # TODO: Triple should be an option to help with cross compile?
         triple = llvm.get_process_triple()
         self._target_descr = TargetDescription(triple,
                                                baseline_cpu,
@@ -234,10 +295,11 @@ class PIXIEModule(IRGenerator):
 
         # get exports
         self._exported_symbols = defaultdict(list)
-        for d in export_configuration._data:
-            self._exported_symbols[d.python_name].append((d.symbol_name,
-                                                          d.signature,
-                                                          d.metadata))
+        if export_configuration is not None:
+            for d in export_configuration._data:
+                self._exported_symbols[d.python_name].append((d.symbol_name,
+                                                              d.signature,
+                                                              d.metadata))
 
     @compiler_lock
     def _compile_feature_specific_dsos(self,):
