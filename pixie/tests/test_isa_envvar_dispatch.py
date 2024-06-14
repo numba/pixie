@@ -1,5 +1,12 @@
+import sys
+import platform
 from pixie import PIXIECompiler, TranslationUnit, ExportConfiguration
-from pixie.tests.support import PixieTestCase, needs_subprocess
+from pixie.tests.support import (
+    PixieTestCase,
+    needs_subprocess,
+    x86_64_only,
+    arm64_only,
+)
 from pixie.mcext import c
 import ctypes
 import os
@@ -17,6 +24,9 @@ llvm_foo_double_double = """
         ret void
     }
     """
+
+
+ISA_SELECT = "sse2" if platform.machine().startswith("x86") else "v8_4a"
 
 
 class TestIsaEnvVarDispatch(PixieTestCase):
@@ -52,7 +62,7 @@ class TestIsaEnvVarDispatch(PixieTestCase):
 
         libfoo.compile()
 
-    @PixieTestCase.run_test_in_subprocess(envvars={"PIXIE_USE_ISA": "sse2"})
+    @PixieTestCase.run_test_in_subprocess(envvars={"PIXIE_USE_ISA": ISA_SELECT})
     def test_envar_dispatch_valid(self):
         # Checks that PIXIE will dispatch so a given ISA env var, it's highly
         # unlikely to find a machine that just supports SSE2 and so this is
@@ -75,7 +85,7 @@ class TestIsaEnvVarDispatch(PixieTestCase):
 
             selected_isa = foo_library.__PIXIE__['selected_isa']
 
-            assert selected_isa == "sse2"
+            assert selected_isa == ISA_SELECT
 
     @needs_subprocess
     def test_impl_envar_dispatch_invalid(self):
@@ -110,6 +120,9 @@ class TestIsaEnvVarDispatch(PixieTestCase):
         assert retcode == c.sysexits.EX_SOFTWARE.constant
         self.assertIn(f"No matching library is available for ISA \"{bad_isa}\"",
                       out.decode())
+        if sys.platform.startswith("darwin"):
+            err = b''.join(ln for ln in err.splitlines()
+                                if not ln.startswith(b'ld: warning:'))
         assert err == b""
 
 

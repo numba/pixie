@@ -170,6 +170,8 @@ class Toolchain(object):
             # as the MSVC compiler would implicitly do.
             # (XXX msvcrtd in pydebug mode?)
             libs = libs + ['msvcrt']
+        elif sys.platform == 'darwin':
+            pass
         else:
             libs = libs + ['rt', 'dl']
 

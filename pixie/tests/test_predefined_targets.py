@@ -82,18 +82,15 @@ class TestIsaDispatchWithPredefinedTargets(PixieTestCase):
 
             predef = getattr(self._target_descr.arch, "predefined", None)
 
-            targets_features_strings = set()
+            targets_features = set()
             for target in ((self._dpts.baseline_target,)
                            + self._dpts.additional_targets):
-                fstr = str(max(getattr(predef, target).features)).upper()
-                targets_features_strings.add(fstr)
-            highest_feature = None
-            for isa, present in __cpu_features__.items():
-                if present and isa.upper() in targets_features_strings:
-                    highest_feature = isa
+                feat = max(getattr(predef, target).features)
+                targets_features.add(feat)
 
-            assert highest_feature is not None
-            assert highest_feature.lower() == selected_isa
+            cpu_features = self.get_process_cpu_features()
+            got = max(set(cpu_features) & set(targets_features))
+            assert selected_isa == str(got)
 
     def test_compilation_on_default_configuration(self):
 
@@ -120,15 +117,9 @@ class TestIsaDispatchWithPredefinedTargets(PixieTestCase):
             target_features.add(max(cfg['baseline_features']))
             [target_features.add(max(d.features)) for d in
              cfg['targets_features']]
-            highest_feature = None
-            target_features_as_strings = [x.as_feature_str().upper() for x in
-                                          target_features]
-            for isa, present in __cpu_features__.items():
-                if present and isa.upper() in target_features_as_strings:
-                    highest_feature = isa
-
-            assert highest_feature is not None
-            assert highest_feature.lower() == selected_isa
+            cpu_features = self.get_process_cpu_features()
+            got = max(set(cpu_features) & set(target_features))
+            assert selected_isa == str(got)
 
 
 if __name__ == '__main__':

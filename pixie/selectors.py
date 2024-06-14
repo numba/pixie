@@ -94,6 +94,63 @@ class Selector():
     def selector_impl(self, builder):
         raise NotImplementedError("This method must be implemented.")
 
+    def _generate_env_var_check(self, builder, found, variant_order):
+        i8 = langref.types.i8
+
+        # This is an "escape hatch" for debug etc whereby the ISA is picked from
+        # the environment variable PIXIE_USE_ISA (if it has been set).
+        # TODO: use secure_getenv if available
+        PIXIE_USE_ISA_env_var_str = self._ctx.insert_const_string(
+            builder.module, "PIXIE_USE_ISA")
+        # this returns a char * to the env var contents, or NULL if no match
+        PIXIE_USE_ISA_value = c.stdlib.getenv(builder,
+                                                PIXIE_USE_ISA_env_var_str)
+        envvar_set_pred = builder.not_(
+            self._ctx.is_null(builder, PIXIE_USE_ISA_value))
+        self.debug_print(builder, "Testing for env var dispatch.\n")
+        with builder.if_else(envvar_set_pred, likely=False) as (then,
+                                                                otherwise):
+            with then:
+                self.debug_print(builder, "Using env var dispatch.\n")
+                # TODO: this is like the env var selector impl, could that be
+                # used?
+                for specific_feature in variant_order:
+                    zero = ir.Constant(c.types.int, 0)
+                    max_len = ir.Constant(c.stddef.size_t, 255)
+                    feature_name_str = self._ctx.insert_const_string(
+                        builder.module, specific_feature)
+                    strcmp_res = c.string.strncmp(builder, PIXIE_USE_ISA_value,
+                                                    feature_name_str,
+                                                    max_len)
+                    pred = builder.icmp_signed("==", strcmp_res, zero)
+                    with builder.if_then(pred):
+                        msg = "Using version from env var: PIXIE_USE_ISA=%s\n"
+                        self.debug_print(builder, msg, PIXIE_USE_ISA_value)
+                        self._select(builder, specific_feature)
+                        # mark having found a suitable match
+                        builder.store(ir.Constant(i8, 1), found)
+                        builder.ret_void()
+
+                # check that a match was found and abort otherwise
+                pred = builder.icmp_unsigned("==", builder.load(found),
+                                                ir.Constant(i8, 0))
+                with builder.if_then(pred, likely=False):
+                    message = ("No matching library is available for ISA "
+                                "\"%s\" supplied via environment variable "
+                                "PIXIE_USE_ISA.\n"
+                                "\nThis error is unrecoverable and the program "
+                                "will now exit. Try checking that the supplied "
+                                "ISA is valid and then rerun.\n")
+                    error_message = self._ctx.insert_const_string(
+                        builder.module, message)
+                    c.stdio.printf(builder, error_message, PIXIE_USE_ISA_value)
+                    # call sigabrt.
+                    self.debug_print(builder, "calling exit\n")
+                    c.stdlib.exit(builder, c.sysexits.EX_SOFTWARE)
+                    builder.ret_void()
+            with otherwise:
+                self.debug_print(builder, "No env var set.\n")
+
 
 class PyVersionSelector(Selector):
 

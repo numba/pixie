@@ -63,12 +63,16 @@ def create_cpu_enum_for_target(triple_str):
 
     all_cpus = parse_target_info_str(target_info_str)
 
-    return CPUEnum('cpus', all_cpus)
+    def fix_dash(x):
+        # Should this really be here?
+        return x.replace('-', '_')
+
+    return CPUEnum('cpus', list(map(fix_dash, all_cpus)))
 
 
 def display_cpu_names():
     triple = llvm.get_process_triple()
-    print(f"Valid CPU names based on the current process LLVM triple: {triple}")
+    print(f"Valid CPU name.replace('_', '-')s based on the current process LLVM triple: {triple}")
     for x in create_cpu_enum_for_target(triple):
         print(f" - {x}")
 
