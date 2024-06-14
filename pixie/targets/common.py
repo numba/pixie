@@ -18,6 +18,12 @@ class CPUEnum(Enum):
 
 class FeaturesEnum(IntEnum):
 
+    def as_feature_str(self):
+        # implement this to deal with things like feature sse4.2 not being a
+        # valid enum field, it allows a mapping between a field "sse42" and
+        # the feature string "sse4.2".
+        raise NotImplementedError
+
     def __str__(self):
         return f'{self.name}'
 
@@ -99,7 +105,7 @@ class Features():
             known_features[k] = False
         # set these features to True
         for x in self.features:
-            known_features[str(x)] = True
+            known_features[x.as_feature_str()] = True
         ret = ','.join(f'+{k}' for k, v in sorted(known_features.items()) if v)
         return ret
 
@@ -169,6 +175,10 @@ class TargetDescription():
                f"'{cpu}' (offending argument supplied to "
                f"{kwarg})")
         if isinstance(cpu, str):
+            # check predefined target first
+            if (ret := getattr(self.arch.predefined, cpu, None)) is not None:
+                return ret.cpu
+            # check check specific cpus
             if not hasattr(self.arch.cpus, cpu):
                 raise ValueError(msg)
             return getattr(self.arch.cpus, cpu)
@@ -187,10 +197,14 @@ class TargetDescription():
                f"supplied to {kwarg})")
         ret = None
         if isinstance(feat, str):
-            resolved_feat = getattr(self.arch.features, feat, None)
-            if resolved_feat is None:
-                raise ValueError(msg)
-            ret = resolved_feat
+            # check predefined target first
+            if hasattr(self.arch.predefined, feat):
+                ret = getattr(self.arch.predefined, feat).features
+            else:
+                resolved_feat = getattr(self.arch.features, feat, None)
+                if resolved_feat is None:
+                    raise ValueError(msg)
+                ret = resolved_feat
         elif isinstance(feat, FeaturesEnum):
             # check the feature instance belongs to the target class, prevent
             # things like using an x86 feature being used against an aarch64
@@ -211,7 +225,13 @@ class TargetDescription():
                 tmp.append(self._canonicalize_feature(f, kwarg))
             ret = tuple(tmp)
         elif isinstance(features, (str, FeaturesEnum)):
-            ret = (self._canonicalize_feature(features, kwarg),)
+            # check predefined target first
+            ret = None
+            if isinstance(features, str):
+                if hasattr(self.arch.predefined, features):
+                    ret = getattr(self.arch.predefined, features).features
+            if ret is None:
+                ret = (self._canonicalize_feature(features, kwarg),)
         else:
             msg = (f"{kwarg} should be a string, FeatureEnum, or a tuple "
                    "comprising any combination of strings and FeatureEnum")
@@ -261,9 +281,18 @@ class TargetDescription():
                     else:
                         raise TypeError(msg)
                 elif isinstance(feature, (str, FeaturesEnum)):
-                    feat = self._canonicalize_feature(feature,
-                                                      "targets_features")
-                    tmp_features.append(CPUDescription(baseline_cpu, (feat,)))
+                    feat = None
+                    if isinstance(feature, str):
+                        if hasattr(self.arch.predefined, feature):
+                            feat = getattr(self.arch.predefined,
+                                           feature).features
+                            tmp_features.append(CPUDescription(baseline_cpu,
+                                                               feat))
+                    if feat is None:
+                        feat = self._canonicalize_feature(feature,
+                                                          "targets_features")
+                        tmp_features.append(CPUDescription(baseline_cpu,
+                                                           (feat,)))
                 elif isinstance(feature, CPUDescription):
                     tmp_features.append(feature)
                 else:

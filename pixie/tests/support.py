@@ -1,5 +1,6 @@
 from unittest import TestCase, skipUnless
 from llvmlite import binding as llvm
+from collections import namedtuple
 import tempfile
 import contextlib
 import os
@@ -24,6 +25,10 @@ def import_dynamic(modname):
     importlib.invalidate_caches()
     __import__(modname)
     return sys.modules[modname]
+
+
+_predefined_target_strings = namedtuple("predefined",
+                                        ("baseline_target additional_targets"))
 
 
 class PixieTestCase(TestCase):
@@ -212,14 +217,29 @@ class PixieTestCase(TestCase):
 
         arch = triple.split("-")[0]
         if arch == "x86_64":
-            from pixie.targets.x86_64 import cpus
+            from pixie.targets.x86_64 import features, predefined
             return TargetDescription(triple,
-                                     cpus.nocona,
-                                     "sse2",
-                                     ("sse3", "avx2", "avx512f",
-                                      "avx512bitalg"))
+                                     predefined.x86_64.cpu,
+                                     predefined.x86_64.features,
+                                     (features.sse2,
+                                      predefined.x86_64_v2,
+                                      predefined.x86_64_v3,
+                                      predefined.x86_64_v4,
+                                      features.avx512bitalg))
         else:
             raise ValueError(f"Unsupported triple: '{triple}'.")
+
+    @classmethod
+    def default_predefined_target_strings(cls, triple=None):
+        # this just encodes some defaults for testing purposes
+        if triple is None:
+            triple = llvm.get_process_triple()
+
+        arch = triple.split("-")[0]
+        if arch == "x86_64":
+            return _predefined_target_strings("x86-64", ("x86-64-v2",
+                                                         "x86-64-v3",
+                                                         "x86-64-v4"))
 
 
 @lru_cache

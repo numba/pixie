@@ -1,8 +1,10 @@
 # x86_64 target
 from enum import auto, Enum
+from types import SimpleNamespace
 from llvmlite import ir
 from pixie.selectors import Selector
-from pixie.targets.common import create_cpu_enum_for_target, FeaturesEnum
+from pixie.targets.common import (create_cpu_enum_for_target, FeaturesEnum,
+                                  CPUDescription)
 from pixie.mcext import c, langref
 
 cpus = create_cpu_enum_for_target("x86_64-unknown-unknown")
@@ -48,6 +50,17 @@ class features(FeaturesEnum):
     avx512bitalg      = 44  # noqa: E221
     avx512fp16        = 45  # noqa: E221
     feature_max       = auto()  # noqa: E221
+
+    def as_feature_str(self):
+        if self.name == "sse41":
+            return "sse4.1"
+        elif self.name == "sse42":
+            return "sse4.2"
+        else:
+            return f'{self.name}'
+
+    def __str__(self):
+        return f'{self.name}'
 
 
 # NOTE: This enum isn't used yet. It needs support for multiple ISA's supplied
@@ -481,3 +494,55 @@ class x86CPUSelector(Selector):
 
 
 CPUSelector = x86CPUSelector
+
+# These are the psABI variants. See something like:
+# https://github.com/archspec/archspec-json/blob/80ce086dd8a981955bb2048561e27b4159b97440/cpu/microarchitectures.json#L47-L364
+# for the feature groupings.
+_x86_64 = CPUDescription(cpus.generic, (features.sse,
+                                        features.sse2,))
+
+_x86_64_v2 = CPUDescription(cpus.generic, (_x86_64.features + (features.ssse3,
+                                                               features.sse41,
+                                                               features.sse42,
+                                                               features.popcnt)
+                                           ))
+
+_x86_64_v3 = CPUDescription(cpus.generic, _x86_64_v2.features + (
+    features.avx,
+    features.avx2,
+    features.f16c,
+    features.fma,
+    ))
+
+_x86_64_v4 = CPUDescription(cpus.generic, _x86_64_v3.features + (
+    features.avx512f,
+    features.avx512bw,
+    features.avx512cd,
+    features.avx512dq,
+    features.avx512vl,
+    ))
+
+
+# a set of predefined targets
+predefined = SimpleNamespace(x86_64=_x86_64,
+                             x86_64_v1=_x86_64,
+                             x86_64_v2=_x86_64_v2,
+                             x86_64_v3=_x86_64_v3,
+                             x86_64_v4=_x86_64_v4)
+
+# extend to true psABI "spelling" (it uses dashes `-`).
+predefined.__dict__["x86-64"] = _x86_64
+predefined.__dict__["x86-64-v2"] = _x86_64_v2
+predefined.__dict__["x86-64-v3"] = _x86_64_v3
+predefined.__dict__["x86-64-v4"] = _x86_64_v4
+
+del _x86_64, _x86_64_v2, _x86_64_v3, _x86_64_v4
+
+
+# Default for x86_64 will compile for all psABI variants as targets, with the
+# baseline set as the psABI x86_64 variant.
+default_configuration = {'baseline_cpu': predefined.x86_64.cpu,
+                         'baseline_features': predefined.x86_64.features,
+                         'targets_features': (predefined.x86_64_v2,
+                                              predefined.x86_64_v3,
+                                              predefined.x86_64_v4)}
