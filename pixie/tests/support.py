@@ -226,6 +226,12 @@ class PixieTestCase(TestCase):
                                       predefined.x86_64_v3,
                                       predefined.x86_64_v4,
                                       features.avx512bitalg))
+        elif arch == "arm64":
+            from pixie.targets.arm64 import cpus
+            return TargetDescription(triple,
+                                     cpus.apple_m1,
+                                     "v8a",    # TODO
+                                     ("v8_4a", "sha3"))    # TODO
         else:
             raise ValueError(f"Unsupported triple: '{triple}'.")
 
@@ -268,3 +274,6 @@ needs_subprocess = unittest.skipUnless(_exec_cond, "needs subprocess harness")
 
 x86_64_only = unittest.skipIf(platform.machine() != 'x86_64',
                               'x86_64 only test')
+
+arm64_only = unittest.skipIf(platform.machine() != 'arm64',
+                             'arm64 only test')
