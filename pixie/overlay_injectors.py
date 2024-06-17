@@ -461,8 +461,10 @@ class AugmentingPyInitGenerator(_OverlayGeneratorBase):
 
     _DEBUG = False
 
-    def __init__(self, module_name, embedded_libhandle_name, available_isas=()):
-        super().__init__(module_name, available_isas=available_isas)
+    def __init__(self, module_name, embedded_libhandle_name, syms, uuid=None,
+                 available_isas=()):
+        super().__init__(module_name, syms=syms, uuid=uuid,
+                         available_isas=available_isas)
         self._embedded_libhandle_name = embedded_libhandle_name
         self.context = Context()
 

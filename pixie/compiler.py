@@ -675,6 +675,8 @@ class PIXIEModule(IRGenerator):
                 # source.
                 gen = AugmentingPyInitGenerator(self._library_name,
                                                 emap._embedded_libhandle_name,
+                                                self._exported_symbols,
+                                                uuid=self._uuid,
                                                 available_isas=have_isas)
             else:
                 gen = AddPixieDictGenerator(self._library_name,

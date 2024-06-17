@@ -1,20 +1,20 @@
-From b3316126fa5fc371f3880b167e1a8d409c9a87f7 Mon Sep 17 00:00:00 2001
+From ce311e871e26d274d06a737f5aa73033ba9016b9 Mon Sep 17 00:00:00 2001
 From: <temporary>
-Date: Tue, 11 Jul 2023 12:00:00
+Date: Mon, 17 Jun 2024 12:00:00
 Subject: [PATCH] Patch for bootstrapping a helperlib.ll for use in PIXIE.
 
 As title.
 ---
  numba/_helperlib.c |  6 ------
- numba/_helpermod.c | 52 ----------------------------------------------------
+ numba/_helpermod.c | 52 ----------------------------------------------
  2 files changed, 58 deletions(-)
 
 diff --git a/numba/_helperlib.c b/numba/_helperlib.c
 --- a/numba/_helperlib.c
 +++ b/numba/_helperlib.c
-@@ -1251,9 +1251,3 @@ numba_gdb_breakpoint(void) {
+@@ -1237,9 +1237,3 @@ numba_gdb_breakpoint(void) {
   */
- 
+
  #include "_lapack.c"
 -
 -/*
@@ -23,12 +23,13 @@ diff --git a/numba/_helperlib.c b/numba/_helperlib.c
 -
 -#include "_random.c"
 diff --git a/numba/_helpermod.c b/numba/_helpermod.c
+index 83f5438f3..58f3a90e1 100644
 --- a/numba/_helpermod.c
 +++ b/numba/_helpermod.c
-@@ -115,14 +115,6 @@ build_c_helpers_dict(void)
+@@ -111,14 +111,6 @@ build_c_helpers_dict(void)
      declmethod(xgesv);
      declmethod(xxnrm2);
- 
+
 -    /* PRNG support */
 -    declmethod(get_py_random_state);
 -    declmethod(get_np_random_state);
@@ -40,10 +41,10 @@ diff --git a/numba/_helpermod.c b/numba/_helpermod.c
      /* Unicode string support */
      declmethod(extract_unicode);
      declmethod(gettyperecord);
-@@ -131,42 +123,6 @@ build_c_helpers_dict(void)
+@@ -127,42 +119,6 @@ build_c_helpers_dict(void)
      /* for gdb breakpoint */
      declmethod(gdb_breakpoint);
- 
+
 -    /* for dictionary support */
 -    declmethod(test_dict);
 -    declmethod(dict_new_sized);
@@ -83,9 +84,9 @@ diff --git a/numba/_helpermod.c b/numba/_helpermod.c
  #define MATH_UNARY(F, R, A) declmethod(F);
  #define MATH_BINARY(F, R, A, B) declmethod(F);
      #include "mathnames.h"
-@@ -193,13 +149,6 @@ _numba_flush_stdout(void) {
- 
- 
+@@ -189,13 +145,6 @@ _numba_flush_stdout(void) {
+
+
  static PyMethodDef ext_methods[] = {
 -    { "rnd_get_state", (PyCFunction) _numba_rnd_get_state, METH_O, NULL },
 -    { "rnd_get_py_state_ptr", (PyCFunction) _numba_rnd_get_py_state_ptr, METH_NOARGS, NULL },
@@ -96,12 +97,12 @@ diff --git a/numba/_helpermod.c b/numba/_helpermod.c
 -    { "_import_cython_function", (PyCFunction) _numba_import_cython_function, METH_VARARGS, NULL },
      { NULL },
  };
- 
+
 @@ -271,7 +220,6 @@ MOD_INIT(_helperlib) {
-     PyModule_AddIntConstant(m, "py_unicode_2byte_kind", PyUnicode_2BYTE_KIND);
-     PyModule_AddIntConstant(m, "py_unicode_4byte_kind", PyUnicode_4BYTE_KIND);
      PyModule_AddIntConstant(m, "py_unicode_wchar_kind", PyUnicode_WCHAR_KIND);
+ #endif
+ #endif
 -    numba_rnd_ensure_global_init();
- 
+
      return MOD_SUCCESS_VAL(m);
  }

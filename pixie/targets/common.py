@@ -343,3 +343,17 @@ class TargetDescription():
         else:
             buf.append(" - None")
         return "\n".join(buf)
+
+
+def get_default_configuration(triple=None):
+    """Gets the default configuration for a triple, if not supplied the
+       current process triple will be used."""
+    if triple is None:
+        _triple = llvm.get_process_triple()
+    else:
+        _triple = triple
+
+    target_triple = decode_llvm_triple(_triple)
+    arch_mod_name = f"pixie.targets.{target_triple.arch}"
+    arch_mod = importlib.import_module(arch_mod_name)
+    return arch_mod.default_configuration

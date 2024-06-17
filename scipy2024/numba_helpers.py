@@ -318,3 +318,37 @@ def pixie_converter(pixie_lib):
         kwargs[k] = NumbaFunctions(jit_wrapper, aot_wrapper)
 
     return tmp_namespace(**kwargs)
+
+
+def gen_pixie_raw_callsite(pixie_lib, pysym, pixie_sig):
+    @intrinsic
+    def bind_call(tyctx, ty_x):
+
+        sig = ty_x(ty_x)
+
+        def codegen(cgctx, builder, sig, llargs):
+            bitcode = pixie_lib.__PIXIE__['bitcode']
+            mod = llvm.parse_bitcode(bitcode)
+            # Prevent e.g. cython globals from being multiply defined.
+            for v in mod.global_variables:
+                if v.linkage == llvm.Linkage.external:
+                    v.linkage = llvm.Linkage.linkonce_odr
+            cgctx.active_code_library.add_llvm_module(mod)
+            foo_sym = pixie_lib.__PIXIE__['symbols'][pysym]
+            sym_name = foo_sym[pixie_sig]['symbol']
+            double_ptr = llvmir.DoubleType().as_pointer()
+            fnty = llvmir.FunctionType(llvmir.VoidType(),
+                                       (double_ptr, double_ptr))
+            fn = cgutils.get_or_insert_function(builder.module, fnty,
+                                                sym_name)
+            fn.attributes.add('alwaysinline')
+            x_ptr = cgutils.alloca_once_value(builder, llargs[0])
+            r_ptr = cgutils.alloca_once(builder, llargs[0].type)
+            builder.call(fn, (x_ptr, r_ptr))
+            return builder.load(r_ptr)
+        return sig, codegen
+
+    @njit(forceinline=True, no_cpython_wrapper=True)
+    def pixie_trampoline(x):
+        return bind_call(x)
+    return pixie_trampoline

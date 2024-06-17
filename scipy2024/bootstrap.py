@@ -7,6 +7,7 @@ import sys
 import numpy as np
 import sysconfig
 
+
 def _extract(fname):
     nb_root = os.path.abspath(provided_path)
     print(("Bootstrapping Numba AOT against Numba source directory:"
@@ -21,7 +22,7 @@ def _extract(fname):
     cmd = ('clang', '-x', 'c', '-fPIC', '-mcmodel=small', '-emit-llvm',
            '-I', nb_include, '-I', np_include, '-I', py_include,
            helpermod, '-S', '-o', '_limited_helpermod.ll')
-    msg = (f"* Running this command to create LLVM IR of '_helpermod.c' "
+    msg = ("* Running this command to create LLVM IR of '_helpermod.c' "
            "that's AOT compatible:\n")
     print(msg)
     print("$ " + ' '.join(cmd) + "\n")

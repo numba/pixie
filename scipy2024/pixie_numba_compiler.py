@@ -5,7 +5,7 @@ import inspect
 from numba.core import sigutils
 from pixie.compiler import PIXIECompiler, ExportConfiguration
 from pixie.compiler import TranslationUnit as pixie_TU
-from pixie.cpus import x86
+from pixie.targets import get_default_configuration
 from numba.core.typing import Context as tyctx
 from numba.core import cpu
 from llvmlite import ir
@@ -75,7 +75,7 @@ class Library():
         self._tus = translation_units
 
     def compile(self):
-        export_config = ExportConfiguration(versioning_strategy='embed_dso')
+        export_config = ExportConfiguration()
         ptus = []
         fnames = ('_limited_helpermod.ll',)
         for name in fnames:
@@ -120,8 +120,7 @@ class Library():
         compiler = PIXIECompiler(library_name=self._name,
                                  translation_units=ptus,
                                  export_configuration=export_config,
-                                 baseline_cpu='nocona',
-                                 baseline_features=x86.sse3,
+                                 **get_default_configuration(),
                                  python_cext=True,
                                  output_dir='.')
         compiler.compile()

@@ -5,9 +5,9 @@ from numba import types
 fn_type = types.FunctionType(types.double(types.double))
 
 
-# Adapted from: https://github.com/numba/numba-examples/blob/cc0304f9fa75530809dc19fb7168de32b3d1a931/tutorials/nasa_apps_oct_2019/answers/1%20-%20Numba%20basics.ipynb
+# Adapted from: https://github.com/numba/numba-examples/blob/cc0304f9fa75530809dc19fb7168de32b3d1a931/tutorials/nasa_apps_oct_2019/answers/1%20-%20Numba%20basics.ipynb  # noqa: E501
 # under the terms of the license:
-# https://github.com/numba/numba-examples/blob/cc0304f9fa75530809dc19fb7168de32b3d1a931/LICENSE
+# https://github.com/numba/numba-examples/blob/cc0304f9fa75530809dc19fb7168de32b3d1a931/LICENSE  # noqa: E501
 # Which is as follows:
 #
 # BSD 2-Clause License

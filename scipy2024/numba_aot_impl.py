@@ -2,7 +2,7 @@ from numba.core import sigutils, extending, config
 import inspect
 
 
-# Adapted from: https://github.com/numba/numba/blob/7f056946c7a69f8739c07ef5a1bdb4b4b5be72cd/numba/core/decorators.py
+# Adapted from: https://github.com/numba/numba/blob/7f056946c7a69f8739c07ef5a1bdb4b4b5be72cd/numba/core/decorators.py  # noqa: E501
 
 
 def aot(signature_or_function=None, locals={}, cache=False,
