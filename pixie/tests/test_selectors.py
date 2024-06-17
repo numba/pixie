@@ -1,6 +1,10 @@
 from pixie.targets import x86_64, arm64
 from pixie.targets.common import Features
-from pixie.dso_tools import ElfMapper, shmEmbeddedDSOHandler, mkstempEmbeddedDSOHandler
+from pixie.dso_tools import (
+    ElfMapper,
+    shmEmbeddedDSOHandler,
+    mkstempEmbeddedDSOHandler,
+)
 from pixie.mcext import c
 from pixie.selectors import PyVersionSelector
 from pixie.targets.x86_64 import x86CPUSelector
@@ -144,7 +148,6 @@ class TestSelectors(PixieTestCase):
         dispatch_keys = ('baseline', 'V8_4A', 'V8_5A', 'V8_6A', 'V8_6A_BF16')
         expected, dispatch_data = self.gen_dispatch_and_expected(dispatch_keys)
 
-
         selector_class = arm64CPUSelector
         dso_handler = mkstempEmbeddedDSOHandler()
         llvm_ir = self.gen_mod(dispatch_data, selector_class, dso_handler)
@@ -181,7 +184,7 @@ class TestSelectors(PixieTestCase):
         cpu_brand_name = cpu_brand_name.decode()
         if cpu_brand_name.startswith("Apple M1"):
             correct_result = 'V8_4A'
-        elif cpu_branch_name.startswith("Apple M2"):
+        elif cpu_brand_name.startswith("Apple M2"):
             correct_result = 'V8_6A_BF16'
         else:
             correct_result = 'baseline'

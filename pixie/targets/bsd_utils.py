@@ -1,4 +1,4 @@
-from ctypes import CDLL, c_char_p, c_void_p, create_string_buffer, sizeof, byref, c_uint
+from ctypes import CDLL, c_char_p, c_void_p, create_string_buffer, byref, c_uint
 from ctypes.util import find_library
 
 libc = CDLL(find_library("c"))
@@ -11,6 +11,7 @@ libc.sysctlbyname.argtypes = [
     c_void_p,  # newp
     c_void_p,  # newlenp
 ]
+
 
 def sysctlbyname(name: bytes) -> bytes:
     """

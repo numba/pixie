@@ -10,9 +10,10 @@ from pixie.targets.common import (
     CPUDescription,
 )
 from pixie.selectors import Selector
-from pixie.mcext import c, langref
+from pixie.mcext import langref
 
-from .bsd_utils import sysctlbyname
+# re-export
+from .bsd_utils import sysctlbyname   # noqa: F401
 
 
 cpus = create_cpu_enum_for_target("arm64-unknown-unknown")
@@ -22,7 +23,7 @@ class features(FeaturesEnum):
     NONE = 0
 
     # features
-    neon = 4 # same as fp_armv8
+    neon = 4   # same as fp_armv8
     dotprod = 5
     fullfp16 = 6
     fp16fml = 7
@@ -50,7 +51,7 @@ class cpu_features(IntEnum):
     NONE = 0
 
     # features
-    NEON = 4 # same as fp_armv8
+    NEON = 4   # same as fp_armv8
     DOTPROD = 5
     FULLFP16 = 6
     FP16FML = 7
@@ -66,7 +67,6 @@ class cpu_features(IntEnum):
     V8_4A = 15
     V8_5A = 16
     V8_6A = 17
-
 
 
 class cpu_dispatchable(IntEnum):
@@ -93,16 +93,15 @@ class cpu_dispatchable(IntEnum):
     V8_6A_BF16 = V8_6A | BF16
 
 
-
-
 _cd = cpu_dispatchable
+
 
 class cpu_family_features(Enum):
     # M1: is +8.4a       +fp-armv8 +fp16fml +fullfp16 +sha3 +ssbs +sb +fptoint
     APPLE_M1 = _cd.V8_4A | _cd.SHA3
     # M2: is +8.4a +8.6a +fp-armv8 +fp16fml +fullfp16 +sha3 +ssbs +sb +fptoint
     #        +bti +predres +i8mm +bf16
-    APPLE_M2 = _cd.V8_6A |_cd.SHA3 | _cd.BF16
+    APPLE_M2 = _cd.V8_6A | _cd.SHA3 | _cd.BF16
 
 
 _apple_m1 = CPUDescription(cpus.generic, (features.v8_4a,
@@ -137,18 +136,19 @@ class arm64CPUSelector(Selector):
         i64 = langref.types.i64
 
         # commpage address
-        # https://github.com/apple-oss-distributions/xnu/blob/94d3b452840153a99b38a3a9659680b2a006908e/osfmk/arm/cpu_capabilities.h#L162
+        # https://github.com/apple-oss-distributions/xnu/blob/94d3b452840153a99b38a3a9659680b2a006908e/osfmk/arm/cpu_capabilities.h#L162     # noqa 501
         commpage_addr = ir.Constant(i64, 0x0000000FFFFFC000)
-        # https://github.com/apple-oss-distributions/xnu/blob/94d3b452840153a99b38a3a9659680b2a006908e/osfmk/arm/cpu_capabilities.h#L332
+        # https://github.com/apple-oss-distributions/xnu/blob/94d3b452840153a99b38a3a9659680b2a006908e/osfmk/arm/cpu_capabilities.h#L332     # noqa 501
         cpu_family_offset = ir.Constant(i64, 0x80)
 
         cpu_families = dict(
-            # Reference: https://github.com/apple-oss-distributions/xnu/blob/94d3b452840153a99b38a3a9659680b2a006908e/osfmk/mach/machine.h#L428-L444
-            APPLE_M1 = 0x1b588bb3,  # M1 is FIRESTORM_ICESTORM
+            # Reference: https://github.com/apple-oss-distributions/xnu/blob/94d3b452840153a99b38a3a9659680b2a006908e/osfmk/mach/machine.h#L428-L444  # noqa 501
+            APPLE_M1=0x1b588bb3,  # M1 is FIRESTORM_ICESTORM
             # From running sysctl hw.cpufamily on a M2
             # hw.cpufamily: -634136515
-            APPLE_M2 = 0xda33d83d,  # M2 is AVALANCHE_BLIZZARD
+            APPLE_M2=0xda33d83d,  # M2 is AVALANCHE_BLIZZARD
         )
+
         def gen_cpu_family_probe(module):
             """
             Probe commpage cpu-family
@@ -197,7 +197,7 @@ class arm64CPUSelector(Selector):
         bb_default = builder.append_basic_block()
         swt = builder.switch(cpu_sel, bb_default)
         with builder.goto_block(bb_default):
-            self.debug_print(builder, f'[selector] select baseline\n')
+            self.debug_print(builder, '[selector] select baseline\n')
             self._select(builder, 'baseline')  # should it be an error?
             builder.ret_void()
 
