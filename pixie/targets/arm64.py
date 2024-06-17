@@ -100,7 +100,8 @@ _cd = cpu_dispatchable
 class cpu_family_features(Enum):
     # M1: is +8.4a       +fp-armv8 +fp16fml +fullfp16 +sha3 +ssbs +sb +fptoint
     APPLE_M1 = _cd.V8_4A | _cd.SHA3
-    # M2: is +8.4a +8.6a +fp-armv8 +fp16fml +fullfp16 +sha3 +ssbs +sb +fptoint +bti +predres +i8mm +bf16
+    # M2: is +8.4a +8.6a +fp-armv8 +fp16fml +fullfp16 +sha3 +ssbs +sb +fptoint
+    #        +bti +predres +i8mm +bf16
     APPLE_M2 = _cd.V8_6A |_cd.SHA3 | _cd.BF16
 
 
@@ -136,16 +137,17 @@ class arm64CPUSelector(Selector):
         i64 = langref.types.i64
 
         # commpage address
+        # https://github.com/apple-oss-distributions/xnu/blob/94d3b452840153a99b38a3a9659680b2a006908e/osfmk/arm/cpu_capabilities.h#L162
         commpage_addr = ir.Constant(i64, 0x0000000FFFFFC000)
+        # https://github.com/apple-oss-distributions/xnu/blob/94d3b452840153a99b38a3a9659680b2a006908e/osfmk/arm/cpu_capabilities.h#L332
         cpu_family_offset = ir.Constant(i64, 0x80)
 
         cpu_families = dict(
-            UNKNOWN = 0,
             # Reference: https://github.com/apple-oss-distributions/xnu/blob/94d3b452840153a99b38a3a9659680b2a006908e/osfmk/mach/machine.h#L428-L444
             APPLE_M1 = 0x1b588bb3,  # M1 is FIRESTORM_ICESTORM
             # From running sysctl hw.cpufamily on a M2
             # hw.cpufamily: -634136515
-            APPLE_M2 = 0xda33d83d,  # M2 is AVALANCHE_BILLZARD
+            APPLE_M2 = 0xda33d83d,  # M2 is AVALANCHE_BLIZZARD
         )
         def gen_cpu_family_probe(module):
             """
@@ -154,6 +156,7 @@ class arm64CPUSelector(Selector):
             ftype = ir.FunctionType(i32, ())
             fn = ir.Function(module, ftype,
                              name="_pixie_darwin_arm64_cpu_family_probe")
+            PREFIX = f"[{fn.name}]"
             fn.linkage = 'internal'
             builder = ir.IRBuilder(fn.append_basic_block('entry'))
             cpu_fam_sel = builder.alloca(i32, name='cpu_fam_sel')
@@ -163,17 +166,18 @@ class arm64CPUSelector(Selector):
                 name="commpage_cpu_fam_ptr",
             )
             cpu_fam = builder.load(commpage_cpu_fam_ptr, name='cpu_fam')
-            self.debug_print(builder, "[_pixie_darwin_arm64_cpu_family_probe] commpage value = %llu\n", cpu_fam)
+            self.debug_print(builder, "{PREFIX} commpage value = %llu\n",
+                             cpu_fam)
 
             for i, (name, cpuid) in enumerate(cpu_families.items()):
                 matched = builder.icmp_unsigned('==', i32(cpuid), cpu_fam)
                 with builder.if_then(matched):
                     builder.store(i32(i), cpu_fam_sel)
-                    self.debug_print(builder, f"[_pixie_darwin_arm64_cpu_family_probe] matched {name}\n")
+                    self.debug_print(builder, f"{PREFIX} matched {name}\n")
 
             output = builder.load(cpu_fam_sel, name='output')
 
-            message = f"[_pixie_darwin_arm64_cpu_family_probe] output=%d\n"
+            message = f"{PREFIX} output=%d\n"
             self.debug_print(builder, message, output)
 
             builder.ret(output)
@@ -194,27 +198,32 @@ class arm64CPUSelector(Selector):
         swt = builder.switch(cpu_sel, bb_default)
         with builder.goto_block(bb_default):
             self.debug_print(builder, f'[selector] select baseline\n')
-            self._select(builder, 'baseline')  # maybe an error
+            self._select(builder, 'baseline')  # should it be an error?
             builder.ret_void()
 
-
         def choose_variant(cpu_name) -> str | None:
+            """Given the CPU family name, choose the dispatchable variant
+            that matches the features of that CPU family.
+            """
             features = cpu_family_features.__members__[cpu_name]
             for variant in reversed(variant_order):
                 variant_feats = cpu_dispatchable[variant]
-                if (features.value & variant_feats.value) == variant_feats.value:
+                anded = features.value & variant_feats.value
+                if anded == variant_feats.value:
                     return variant
 
+        # Match against CPU family and select the
         for i, name in enumerate(cpu_families):
-            if i != 0: # skip unknown
-                bb = builder.append_basic_block()
-                with builder.goto_block(bb):
-                    self.debug_print(builder, f'[selector] cpu is {name}\n')
-                    variant = choose_variant(name)
-                    if variant is not None:
-                        self.debug_print(builder, f'[selector] select {variant}\n')
-                        self._select(builder, variant)
-                    else:
-                        self._select(builder, "baseline")
-                    builder.ret_void()
-                swt.add_case(i, bb)
+            bb = builder.append_basic_block()
+            with builder.goto_block(bb):
+                self.debug_print(builder, f'[selector] cpu is {name}\n')
+                variant = choose_variant(name)
+                if variant is not None:
+                    # matches a variant
+                    self.debug_print(builder, f'[selector] select {variant}\n')
+                    self._select(builder, variant)
+                else:
+                    # doesn't match any variant. choose baseline
+                    self._select(builder, "baseline")
+                builder.ret_void()
+            swt.add_case(i, bb)
