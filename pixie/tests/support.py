@@ -227,11 +227,13 @@ class PixieTestCase(TestCase):
                                       predefined.x86_64_v4,
                                       features.avx512bitalg))
         elif arch == "arm64":
-            from pixie.targets.arm64 import cpus
+            from pixie.targets.arm64 import features, predefined
             return TargetDescription(triple,
-                                     cpus.apple_m1,
-                                     "v8a",    # TODO
-                                     ("v8_4a", "sha3"))    # TODO
+                                     predefined.apple_m1.cpu,
+                                     predefined.apple_m1.features,
+                                     (features.v8_5a,
+                                      features.v8_6a,
+                                      features.bf16))
         else:
             raise ValueError(f"Unsupported triple: '{triple}'.")
 

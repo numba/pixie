@@ -1,9 +1,14 @@
 # arm64 - Apple silicon target
 from enum import auto, Enum, IntEnum
+from types import SimpleNamespace
 
 from llvmlite import ir
 
-from pixie.targets.common import create_cpu_enum_for_target, FeaturesEnum
+from pixie.targets.common import (
+    create_cpu_enum_for_target,
+    FeaturesEnum,
+    CPUDescription,
+)
 from pixie.selectors import Selector
 from pixie.mcext import c, langref
 
@@ -37,7 +42,7 @@ class features(FeaturesEnum):
     # TODO: implement
     feature_max       = auto()  # noqa: E221
 
-    def __str__(self):
+    def as_feature_str(self):
         return self.name.replace('_', '.')
 
 
@@ -89,6 +94,7 @@ class cpu_dispatchable(IntEnum):
 
 
 
+
 _cd = cpu_dispatchable
 
 class cpu_family_features(Enum):
@@ -96,6 +102,19 @@ class cpu_family_features(Enum):
     APPLE_M1 = _cd.V8_4A | _cd.SHA3
     # M2: is +8.4a +8.6a +fp-armv8 +fp16fml +fullfp16 +sha3 +ssbs +sb +fptoint +bti +predres +i8mm +bf16
     APPLE_M2 = _cd.V8_6A |_cd.SHA3 | _cd.BF16
+
+
+_apple_m1 = CPUDescription(cpus.generic, (features.v8_4a,
+                                          features.sha3,))
+_apple_m2 = CPUDescription(cpus.generic, (features.v8_6a,
+                                          features.sha3,
+                                          features.bf16,))
+
+# a set of predefined targets
+predefined = SimpleNamespace(
+    apple_m1=_apple_m1,
+    apple_m2=_apple_m2,
+)
 
 
 class arm64CPUSelector(Selector):
