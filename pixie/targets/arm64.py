@@ -15,6 +15,8 @@ from pixie.mcext import langref
 # re-export
 from .bsd_utils import sysctlbyname   # noqa: F401
 
+from . import darwin_info
+
 
 cpus = create_cpu_enum_for_target("arm64-unknown-unknown")
 
@@ -136,18 +138,12 @@ class arm64CPUSelector(Selector):
         i64 = langref.types.i64
 
         # commpage address
-        # https://github.com/apple-oss-distributions/xnu/blob/94d3b452840153a99b38a3a9659680b2a006908e/osfmk/arm/cpu_capabilities.h#L162     # noqa 501
-        commpage_addr = ir.Constant(i64, 0x0000000FFFFFC000)
-        # https://github.com/apple-oss-distributions/xnu/blob/94d3b452840153a99b38a3a9659680b2a006908e/osfmk/arm/cpu_capabilities.h#L332     # noqa 501
-        cpu_family_offset = ir.Constant(i64, 0x80)
-
-        cpu_families = dict(
-            # Reference: https://github.com/apple-oss-distributions/xnu/blob/94d3b452840153a99b38a3a9659680b2a006908e/osfmk/mach/machine.h#L428-L444  # noqa 501
-            APPLE_M1=0x1b588bb3,  # M1 is FIRESTORM_ICESTORM
-            # From running sysctl hw.cpufamily on a M2
-            # hw.cpufamily: -634136515
-            APPLE_M2=0xda33d83d,  # M2 is AVALANCHE_BLIZZARD
+        commpage_addr = ir.Constant(i64, darwin_info.commpage_addr)
+        cpu_family_offset = ir.Constant(
+            i64, darwin_info.commpage_cpu_family_offset,
         )
+
+        cpu_families = darwin_info.cpu_families
 
         def gen_cpu_family_probe(module):
             """
