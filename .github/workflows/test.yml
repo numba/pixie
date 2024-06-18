@@ -42,6 +42,11 @@ jobs:
         run: |
           coverage run -m pytest --pyargs pixie
           coverage report
+      - name: Run pixie scripts, make sure they show the help screen
+        shell: bash -l {0}
+        run: |
+          pixie-cc -h
+          pixie-cythonize -h
       - name: Run conda-build
         shell: bash -l {0}
         run: |
