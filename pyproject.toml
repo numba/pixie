@@ -7,7 +7,7 @@ name = "numba-pixie"
 dynamic = ["version"]
 description = "Creates performance portable libraries with embedded source representations."
 readme = "README.rst"
-license = {text = "BSD-2-Clause"}
+license = { text = "BSD-2-Clause" }
 requires-python = ">=3.9"
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -21,14 +21,16 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Topic :: Software Development :: Compilers",
 ]
-dependencies = [
-    "llvmlite >=0.39,<0.43", "setuptools"
-]
+dependencies = ["llvmlite >=0.39,<0.43", "setuptools"]
 [project.urls]
 "Repository" = "https://github.com/numba/pixie"
 "Homepage" = "https://github.com/numba/pixie"
 "Documentation" = "https://numba-pixie.readthedocs.io/"
 "Issue Tracker" = "https://github.com/numba/pixie/issues"
+
+[project.scripts]
+pixie-cc = "pixie.cli:pixie_cc"
+pixie-cythonize = "pixie.cli:pixie_cythonize"
 
 [tool.setuptools.packages]
 find = {}
