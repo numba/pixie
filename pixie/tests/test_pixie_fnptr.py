@@ -1,5 +1,4 @@
 from pixie import PIXIECompiler, TranslationUnit, ExportConfiguration
-from pixie.cpus import x86
 from pixie.tests.support import PixieTestCase
 import ctypes
 import timeit
@@ -58,7 +57,7 @@ class TestMultipleFunctionsSingleModule(PixieTestCase):
         optlib_tus = (TranslationUnit("llvm_optimise", llvm_optimise),
                       TranslationUnit("llvm_function", llvm_function),
                       TranslationUnit("llvm_specialize", llvm_specialize))
-        optlib_export_config = ExportConfiguration('embed_dso')
+        optlib_export_config = ExportConfiguration()
         optlib_export_config.add_symbol(python_name='optimise',
                                         symbol_name='_Z9optimiserPFlvEPlS1_',
                                         signature='void(void*, i64*, i64*)',)
@@ -71,11 +70,15 @@ class TestMultipleFunctionsSingleModule(PixieTestCase):
                                         symbol_name='_Z10specializePl',
                                         signature='void(i64*)',)
 
+        target_descr = cls.default_test_config()
+
+        bcpu = target_descr.baseline_target.cpu
+        bfeat = target_descr.baseline_target.features
         optlib = PIXIECompiler(library_name='opt_library',
                                translation_units=optlib_tus,
                                export_configuration=optlib_export_config,
-                               baseline_cpu='nocona',
-                               baseline_features=x86.sse3,
+                               baseline_cpu=bcpu,
+                               baseline_features=bfeat,
                                python_cext=True,
                                output_dir=cls.tmpdir.name)
 

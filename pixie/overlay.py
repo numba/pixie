@@ -11,10 +11,9 @@ def address_of_symbol(DSO, symbol_name):
     return getattr(DSO, symbol_name)  # Fix this
 
 
-def get_bitcode(DSO, obj):
-    mod_name = obj.__name__
-    sz_name = f"get_bitcode_for_{mod_name}_size"
-    data_name = f"get_bitcode_for_{mod_name}"
+def get_bitcode(DSO):
+    sz_name = "get_bitcode_for_self_size"
+    data_name = "get_bitcode_for_self"
     sz_fptr = getattr(DSO, sz_name)
     sz_fptr.argtypes = ()
     sz_fptr.restype = ctypes.c_long
@@ -30,7 +29,8 @@ def get_nil(function):
 
 
 def specialize(obj):
-    def impl(baseline_cpu='host', baseline_features=None):
+    def impl(baseline_cpu='host', baseline_features=None,
+             targets_features=None):
         if baseline_cpu == 'host':
             from llvmlite import binding as llvm
             target_cpu = llvm.get_host_cpu_name()
@@ -49,7 +49,7 @@ def specialize(obj):
         module = obj
         outdir = os.path.split(module.__file__)[0]
 
-        export_config = ExportConfiguration('embed_dso')
+        export_config = ExportConfiguration()
 
         tus = (TranslationUnit("self", bitcode),)
 
@@ -59,21 +59,30 @@ def specialize(obj):
                                          symbol_name=data['symbol'],
                                          signature=sig,)
 
-        print("specialization of", obj, "has uuid", obj.__PIXIE__['uuid'])
+        print("Specialization of", obj, "has uuid", obj.__PIXIE__['uuid'])
         specialized_lib_name = f"{module.__name__}_pixie_specialized"
         lib = PIXIECompiler(library_name=specialized_lib_name,
                             translation_units=tus,
                             export_configuration=export_config,
                             baseline_cpu=target_cpu,
-                            baseline_features=target_features,
-                            targets_features=(),
+                            baseline_features=baseline_features,
+                            targets_features=(target_features,),
                             python_cext=True,
                             # the specialization needs the same UUID
                             uuid=obj.__PIXIE__['uuid'],
                             output_dir=outdir)
         lib.compile()
+        dso = os.path.join(lib._output_dir, lib._library_name)
+        print(f"Writing specialized library: {dso}.")
 
     return impl
+
+
+def selected_isa(dso):
+    dso.get_selected_dso.argtypes = ()
+    dso.get_selected_dso.restype = ctypes.c_char_p
+    selected = dso.get_selected_dso().decode()
+    return selected
 
 
 def bootstrap(obj):
@@ -86,6 +95,7 @@ def bootstrap(obj):
 
 def main(PIXIE_payload, obj):
     import importlib
+    import importlib.util
     sbs_name = f'{obj.__name__}_pixie_specialized'
     specialized_mod = None
     try:
@@ -115,8 +125,9 @@ def main(PIXIE_payload, obj):
                    "not be used.")
             warnings.warn(msg)
 
+    spec = importlib.util.find_spec(obj.__name__)
     import ctypes
-    DSO = ctypes.CDLL(obj.__file__)
+    DSO = ctypes.CDLL(spec.origin)
     pixie_dict_raw = PIXIE_payload["__PIXIE__"]
     func_dict = PIXIE_payload["__PIXIE_assemblers__"]
     fns = {}
@@ -146,8 +157,9 @@ def main(PIXIE_payload, obj):
                 vdict['cfunc'] = ctbinding(address)
                 tmp[variant] = vdict
             data['feature_variants'] = tmp
-    pixie_dict_raw['bitcode'] = fns["get_bitcode"](DSO, obj)
+    pixie_dict_raw['bitcode'] = fns["get_bitcode"](DSO)
     pixie_dict_raw['specialize'] = fns["specialize"](obj)
+    pixie_dict_raw['selected_isa'] = fns["selected_isa"](DSO)
 
     # Write in overlay
     obj.__PIXIE__ = pixie_dict_raw
@@ -191,6 +203,7 @@ def create_base_payload():
         inspect.getsource(address_of_symbol)
     PIXIE_assemblers['bootstrap'] = inspect.getsource(bootstrap)
     PIXIE_assemblers['specialize'] = inspect.getsource(specialize)
+    PIXIE_assemblers['selected_isa'] = inspect.getsource(selected_isa)
 
     return {'__PIXIE__': PIXIE_dunder,
             '__PIXIE_assemblers__': PIXIE_assemblers}

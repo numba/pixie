@@ -1,6 +1,6 @@
 from pixie import PIXIECompiler, TranslationUnit, ExportConfiguration
-from pixie.cpus import x86
 from pixie.tests.support import PixieTestCase
+from pixie.targets.x86_64 import features
 import unittest
 
 llvm_foo_double_double = """
@@ -42,7 +42,7 @@ class TestSpecialize(PixieTestCase):
         tus.append(TranslationUnit("llvm_foo_i64_i64",
                                    llvm_foo_i64_i64))
 
-        export_config = ExportConfiguration('embed_dso')
+        export_config = ExportConfiguration()
         export_config.add_symbol(python_name='foo',
                                  symbol_name='_Z3fooPlS_',
                                  signature='void(i64*, i64*, i64*)',)
@@ -50,11 +50,14 @@ class TestSpecialize(PixieTestCase):
                                  symbol_name='_Z3fooPdS_',
                                  signature='void(double*, double*, double*)',)
 
+        target_descr = cls.default_test_config()
+        bcpu = target_descr.baseline_target.cpu
+        bfeat = target_descr.baseline_target.features
         libfoo = PIXIECompiler(library_name='foo_library',
                                translation_units=tus,
                                export_configuration=export_config,
-                               baseline_cpu='nocona',
-                               baseline_features=x86.sse3,
+                               baseline_cpu=bcpu,
+                               baseline_features=bfeat,
                                python_cext=True,
                                output_dir=cls.tmpdir.name)
 
@@ -70,9 +73,10 @@ class TestSpecialize(PixieTestCase):
             # cursory check that foo_library is ok
             assert foo_library.__PIXIE__['is_specialized'] is False
             # now specialize
-            feat = (x86.avx512f,)
-            foo_library.__PIXIE__['specialize'](baseline_cpu='skylake-avx512',
-                                                baseline_features=feat)
+            feat = features.avx512f
+            foo_library.__PIXIE__['specialize'](baseline_cpu='nocona',
+                                                baseline_features=features.sse3,
+                                                targets_features=(feat,),)
 
         # Reload
         with self.load_pixie_module('foo_library') as foo_library_specialized:

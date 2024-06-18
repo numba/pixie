@@ -135,3 +135,17 @@ class RawPyAPI(object):
         PyUnicode_AsUTF8AndSize_fn = ir.Function(llvm_module, *args)
         PyUnicode_AsUTF8AndSize_fn.linkage = 'external'
         return PyUnicode_AsUTF8AndSize_fn
+
+    @classmethod
+    def PyType_IsSubtype(self, llvm_module):
+        def PyType_IsSubtype_sig_type():
+            signature = ir.FunctionType(lt._int64,
+                                        # PyTypeObject *, PyTypeObject *
+                                        (lt._pytypeobject_head_p,
+                                         lt._pytypeobject_head_p,),)
+            name = "PyType_IsSubtype"
+            return signature, name
+        args = PyType_IsSubtype_sig_type()
+        PyType_IsSubtype_fn = ir.Function(llvm_module, *args)
+        PyType_IsSubtype_fn.linkage = 'external'
+        return PyType_IsSubtype_fn

@@ -1,6 +1,7 @@
 import ctypes
 import re
 from collections import namedtuple
+from llvmlite import ir
 
 
 class Type(object):
@@ -42,7 +43,7 @@ class Float(Type):
         assert isinstance(bits, int)
         assert bits > 0
         self._bits = bits
-        super(Float, self).__init__(llvm_type, numpy_shortcode)
+        super(Float, self).__init__(llvm_type, llvm_type, numpy_shortcode)
 
 
 class Void(Type):
@@ -117,6 +118,22 @@ _llvm_ptr_map = {'i8*': int8p,
                  'double*': float64p,
                  'char*': charp,
                  'void*': voidp,
+                 }
+
+
+_llvm_ir_ptr_map = {
+                 int8p: ir.IntType(8).as_pointer(),
+                 uint8p: ir.IntType(8).as_pointer(),
+                 int16p: ir.IntType(16).as_pointer(),
+                 uint16p: ir.IntType(16).as_pointer(),
+                 int32p: ir.IntType(32).as_pointer(),
+                 uint32p: ir.IntType(32).as_pointer(),
+                 int64p: ir.IntType(64).as_pointer(),
+                 uint64p: ir.IntType(64).as_pointer(),
+                 float32p: ir.FloatType().as_pointer(),
+                 float64p: ir.DoubleType().as_pointer(),
+                 charp: ir.IntType(8).as_pointer(),
+                 voidp: ir.IntType(8).as_pointer(),
                  }
 
 _ctypes_ptr_map = {int8p: ctypes.POINTER(ctypes.c_int8),
@@ -204,6 +221,15 @@ class Signature():
         ctargs = [_ctypes_str_ptr_map[x] for x in argtys]
         fn = f"ctypes.CFUNCTYPE(None, {','.join(ctargs)})"
         return fn
+
+    def as_llvm_types(self):
+        argtys = self._canonical_signature.argument_types
+        llargs = [_llvm_ir_ptr_map[x] for x in argtys]
+        return canonical_signature(ir.VoidType(), llargs)
+
+    def as_llvm_function_type(self):
+        s = self.as_llvm_types()
+        return ir.FunctionType(s.return_type, s.argument_types)
 
     def __hash__(self):
         return hash((tuple(self._canonical_signature.argument_types),

@@ -2,7 +2,6 @@ import ctypes
 import timeit
 import unittest
 from pixie import PIXIECompiler, TranslationUnit, ExportConfiguration
-from pixie.cpus import x86
 from pixie.types import Signature
 from pixie.tests.support import PixieTestCase
 import llvmlite.binding as llvm
@@ -57,8 +56,12 @@ class TestCombiningPixieModules(PixieTestCase):
     def setUpClass(cls):
         PixieTestCase.setUpClass()
 
+        target_descr = cls.default_test_config()
+        bcpu = target_descr.baseline_target.cpu
+        bfeat = target_descr.baseline_target.features
+
         functionlib_tus = (TranslationUnit("llvm_function", llvm_function),)
-        functionlib_export_config = ExportConfiguration('embed_dso')
+        functionlib_export_config = ExportConfiguration()
         functionlib_export_config.add_symbol(python_name='function',
                                              symbol_name='_Z8functionPi',
                                              signature='void(i64*)',)
@@ -66,15 +69,15 @@ class TestCombiningPixieModules(PixieTestCase):
         fnlib = PIXIECompiler(library_name='function_library',
                               translation_units=functionlib_tus,
                               export_configuration=functionlib_export_config,
-                              baseline_cpu='nocona',
-                              baseline_features=x86.sse3,
+                              baseline_cpu=bcpu,
+                              baseline_features=bfeat,
                               python_cext=True,
                               output_dir=cls.tmpdir.name)
 
         fnlib.compile()
 
         optlib_tus = (TranslationUnit("llvm_optimise", llvm_optimise),)
-        optlib_export_config = ExportConfiguration('embed_dso')
+        optlib_export_config = ExportConfiguration()
         optlib_export_config.add_symbol(python_name='optimise',
                                         symbol_name='_Z9optimiserPFlvEPlS1_',
                                         signature='void(void*, i64*, i64*)',)
@@ -82,8 +85,8 @@ class TestCombiningPixieModules(PixieTestCase):
         optlib = PIXIECompiler(library_name='optimise_library',
                                translation_units=optlib_tus,
                                export_configuration=optlib_export_config,
-                               baseline_cpu='nocona',
-                               baseline_features=x86.sse3,
+                               baseline_cpu=bcpu,
+                               baseline_features=bfeat,
                                python_cext=True,
                                output_dir=cls.tmpdir.name)
 
@@ -93,7 +96,7 @@ class TestCombiningPixieModules(PixieTestCase):
         # Tests loading a couple of pixie modules and calling via symbols and
         # via a specialisation.
 
-        with self.load_pixie_module('optimise_library') as optimise_library,\
+        with self.load_pixie_module('optimise_library') as optimise_library, \
                 self.load_pixie_module('function_library') as function_library:
 
             # check the ctypes binding to the pre-compiled symbols works

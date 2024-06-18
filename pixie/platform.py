@@ -158,18 +158,21 @@ class Toolchain(object):
                             output_filename, output_dir,
                             libraries, library_dirs,
                             export_symbols=export_symbols,
-                            extra_preargs=extra_ldflags)
+                            extra_postargs=extra_ldflags)
 
     def get_python_libraries(self):
         """
         Get the library arguments necessary to link with Python.
         """
-        libs = self._build_ext.get_libraries(_DummyExtension())
+        libs = list(self._build_ext.get_libraries(_DummyExtension()))
         if sys.platform == 'win32':
             # Under Windows, need to link explicitly against the CRT,
             # as the MSVC compiler would implicitly do.
             # (XXX msvcrtd in pydebug mode?)
             libs = libs + ['msvcrt']
+        else:
+            libs = libs + ['rt', 'dl']
+
         return libs
 
     def get_python_library_dirs(self):

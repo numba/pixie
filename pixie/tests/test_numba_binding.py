@@ -1,5 +1,4 @@
 from pixie import PIXIECompiler, TranslationUnit, ExportConfiguration
-from pixie.cpus import x86
 from pixie.tests.support import PixieTestCase
 import unittest
 
@@ -56,7 +55,7 @@ class TestNumbaBinding(PixieTestCase):
         tus.append(TranslationUnit("llvm_foo_i64_i64",
                                    llvm_foo_i64_i64))
 
-        export_config = ExportConfiguration('embed_dso')
+        export_config = ExportConfiguration()
         export_config.add_symbol(python_name='foo',
                                  symbol_name='_Z3fooPlS_',
                                  signature='void(i64*, i64*, i64*)',)
@@ -64,11 +63,13 @@ class TestNumbaBinding(PixieTestCase):
                                  symbol_name='_Z3fooPdS_',
                                  signature='void(double*, double*, double*)',)
 
+        target_descr = cls.default_test_config()
+        bfeat = target_descr.baseline_target.features
         libfoo = PIXIECompiler(library_name='foo_library',
                                translation_units=tus,
                                export_configuration=export_config,
-                               baseline_cpu='nocona',
-                               baseline_features=x86.sse3,
+                               baseline_cpu=target_descr.baseline_target.cpu,
+                               baseline_features=bfeat,
                                python_cext=True,
                                output_dir=cls.tmpdir.name)
 
