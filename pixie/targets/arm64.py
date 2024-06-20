@@ -73,10 +73,10 @@ _cd = cpu_dispatchable
 
 class cpu_family_features(Enum):
     # M1: is +8.4a       +fp-armv8 +fp16fml +fullfp16 +sha3 +ssbs +sb +fptoint
-    APPLE_M1 = _cd.V8_4A | _cd.SHA3
+    APPLE_M1 = _cd.v8_4a | _cd.sha3
     # M2: is +8.4a +8.6a +fp-armv8 +fp16fml +fullfp16 +sha3 +ssbs +sb +fptoint
     #        +bti +predres +i8mm +bf16
-    APPLE_M2 = _cd.V8_6A | _cd.SHA3 | _cd.BF16
+    APPLE_M2 = _cd.v8_6a | _cd.sha3 | _cd.bf16
 
 
 _apple_m1 = CPUDescription(cpus.generic, (features.v8_4a,
