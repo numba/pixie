@@ -1,6 +1,7 @@
 import argparse
 import os
 import subprocess
+import sysconfig
 import tempfile
 
 from llvmlite import binding as llvm
@@ -24,6 +25,7 @@ def tu_from_c_source(fname):
             "c",
             "-fPIC",
             "-mcmodel=small",
+            '-I', sysconfig.get_path("include"),
             "-emit-llvm",
             fname,
             "-o",
@@ -31,10 +33,21 @@ def tu_from_c_source(fname):
             "-c",
         )
         print(" ".join(cmd))
+        # TODO error mode
         subprocess.run(cmd)
         with open(outfile, "rb") as f:
             data = f.read()
     return TranslationUnit(fname, data)
+
+
+def c_from_cython_source(fname):
+    cmd = ("cython", "-3", fname)
+    # TODO error mode
+    subprocess.run(cmd)
+    outfile = os.path.join(".", "".join([fname.split(".")[0], ".c"]))
+    with open(outfile, "rt") as f:
+        data = f.read()
+    return data, outfile
 
 
 def default_test_config(triple=None):
@@ -75,7 +88,8 @@ def default_test_config(triple=None):
 def pixie_cc():
     parser = argparse.ArgumentParser(description="pixie-cc")
     parser.add_argument("-g", action="store_true", help="enable debug info")
-    parser.add_argument("-o", help="output library")
+    parser.add_argument("-v", action="store_true", help="enable verbose")
+    parser.add_argument("-o", metavar="<lib>", help="output library")
     parser.add_argument(
         "-O", metavar="<n>", type=int, nargs=1, help="optimization level"
     )
@@ -103,9 +117,34 @@ def pixie_cc():
 
 def pixie_cythonize():
     parser = argparse.ArgumentParser(description="pixie-cythonize")
+    parser.add_argument("-g", action="store_true", help="enable debug info")
+    parser.add_argument("-v", action="store_true", help="enable verbose")
+    parser.add_argument("-o", metavar="<lib>", help="output library")
+    parser.add_argument(
+        "-O", metavar="<n>", type=int, nargs=1, help="optimization level"
+    )
     parser.add_argument("pyx-source", help="input source file")
     args = parser.parse_args()
     print(args)
+    # cythonize the source
+    data, cfile = c_from_cython_source(vars(args)["pyx-source"])
+    tranlastion_units = [tu_from_c_source(cfile)]
+    export_config = ExportConfiguration()
+    target_description = default_test_config()
+    compiler = PIXIECompiler(
+        library_name=args.o,
+        translation_units=tranlastion_units,
+        export_configuration=export_config,
+        baseline_cpu=target_description.baseline_target.cpu,
+        baseline_features=target_description.baseline_target.features,
+        targets_features=target_description._get_targets_features(
+            target_description.baseline_target.features,
+            target_description.baseline_target.cpu,
+        ),
+        python_cext=True,  # TODO allow users to specify this
+        output_dir=".",  # TODO use $PWD for now
+    )
+    compiler.compile()
 
 
 if __name__ == "__main__":
