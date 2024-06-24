@@ -14,26 +14,26 @@ from pixie.compiler import (
 )
 
 
-def tu_from_c_source(fname, build_directory):
+def tu_from_c_source(fname, build_directory, include_python=False):
     # TODO put this in support.py or utils.py
     outfile = os.path.join(build_directory, "tmp.bc")
-    cmd = (
+    cmd = [
         "clang",
         "-x",
         "c",
         "-fPIC",
         "-mcmodel=small",
-        "-I",
-        sysconfig.get_path("include"),
         "-emit-llvm",
         fname,
         "-o",
         outfile,
         "-c",
-    )
+    ]
+    if include_python:
+        cmd.extend(["-I", sysconfig.get_path("include")])
+    # TODO: verbose
     print(" ".join(cmd))
-    # TODO error mode
-    subprocess.run(cmd)
+    subprocess.run(cmd, check=True)
     with open(outfile, "rb") as f:
         data = f.read()
     return TranslationUnit(fname, data)
@@ -94,6 +94,7 @@ def pixie_cc():
     )
     parser.add_argument("c-source", help="input source file")
     args = parser.parse_args()
+    # TODO: verbose
     print(args)
 
     with tempfile.TemporaryDirectory(prefix="__pxbld__") as build_directory:
@@ -126,11 +127,12 @@ def pixie_cythonize():
     )
     parser.add_argument("pyx-source", help="input source file")
     args = parser.parse_args()
+    # TODO: verbose
     print(args)
     # cythonize the source
     with tempfile.TemporaryDirectory(prefix="__pxbld__") as build_directory:
         data, cfile = c_from_cython_source(vars(args)["pyx-source"], build_directory)
-        tranlastion_units = [tu_from_c_source(cfile, build_directory)]
+        tranlastion_units = [tu_from_c_source(cfile, build_directory, include_python=True)]
         export_config = ExportConfiguration()
         target_description = default_test_config()
         compiler = PIXIECompiler(
@@ -147,7 +149,3 @@ def pixie_cythonize():
             output_dir=".",  # TODO use $PWD for now
         )
         compiler.compile()
-
-
-if __name__ == "__main__":
-    pixie_cc()
