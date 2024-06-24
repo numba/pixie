@@ -14,37 +14,37 @@ from pixie.compiler import (
 )
 
 
-def tu_from_c_source(fname):
+def tu_from_c_source(fname, build_directory):
     # TODO put this in support.py or utils.py
     prefix = "pixie-c-build-"
-    with tempfile.TemporaryDirectory(prefix=prefix) as build_dir:
-        outfile = os.path.join(build_dir, "tmp.bc")
-        cmd = (
-            "clang",
-            "-x",
-            "c",
-            "-fPIC",
-            "-mcmodel=small",
-            '-I', sysconfig.get_path("include"),
-            "-emit-llvm",
-            fname,
-            "-o",
-            outfile,
-            "-c",
-        )
-        print(" ".join(cmd))
-        # TODO error mode
-        subprocess.run(cmd)
-        with open(outfile, "rb") as f:
-            data = f.read()
+    outfile = os.path.join(build_directory, "tmp.bc")
+    cmd = (
+        "clang",
+        "-x",
+        "c",
+        "-fPIC",
+        "-mcmodel=small",
+        "-I",
+        sysconfig.get_path("include"),
+        "-emit-llvm",
+        fname,
+        "-o",
+        outfile,
+        "-c",
+    )
+    print(" ".join(cmd))
+    # TODO error mode
+    subprocess.run(cmd)
+    with open(outfile, "rb") as f:
+        data = f.read()
     return TranslationUnit(fname, data)
 
 
-def c_from_cython_source(fname):
-    cmd = ("cython", "-3", fname)
-    # TODO error mode
-    subprocess.run(cmd)
-    outfile = os.path.join(".", "".join([fname.split(".")[0], ".c"]))
+def c_from_cython_source(fname, build_directory):
+    outfile = os.path.join(build_directory, "".join([fname.split(".")[0], ".c"]))
+    cmd = ("cython", "-3", fname, "-o", outfile)
+    subprocess.run(cmd, check=True)
+    outfile = os.path.join(build_directory, "".join([fname.split(".")[0], ".c"]))
     with open(outfile, "rt") as f:
         data = f.read()
     return data, outfile
@@ -96,23 +96,25 @@ def pixie_cc():
     parser.add_argument("c-source", help="input source file")
     args = parser.parse_args()
     print(args)
-    tranlastion_units = [tu_from_c_source(vars(args)["c-source"])]
-    export_config = ExportConfiguration()
-    target_description = default_test_config()
-    compiler = PIXIECompiler(
-        library_name=args.o,
-        translation_units=tranlastion_units,
-        export_configuration=export_config,
-        baseline_cpu=target_description.baseline_target.cpu,
-        baseline_features=target_description.baseline_target.features,
-        targets_features=target_description._get_targets_features(
-            target_description.baseline_target.features,
-            target_description.baseline_target.cpu,
-        ),
-        python_cext=True,  # TODO allow users to specify this
-        output_dir=".",  # TODO use $PWD for now
-    )
-    compiler.compile()
+
+    with tempfile.TemporaryDirectory(prefix="__pxbld__") as build_directory:
+        tranlastion_units = [tu_from_c_source(vars(args)["c-source"], build_directory)]
+        export_config = ExportConfiguration()
+        target_description = default_test_config()
+        compiler = PIXIECompiler(
+            library_name=args.o,
+            translation_units=tranlastion_units,
+            export_configuration=export_config,
+            baseline_cpu=target_description.baseline_target.cpu,
+            baseline_features=target_description.baseline_target.features,
+            targets_features=target_description._get_targets_features(
+                target_description.baseline_target.features,
+                target_description.baseline_target.cpu,
+            ),
+            python_cext=True,  # TODO allow users to specify this
+            output_dir=".",  # TODO use $PWD for now
+        )
+        compiler.compile()
 
 
 def pixie_cythonize():
@@ -127,24 +129,25 @@ def pixie_cythonize():
     args = parser.parse_args()
     print(args)
     # cythonize the source
-    data, cfile = c_from_cython_source(vars(args)["pyx-source"])
-    tranlastion_units = [tu_from_c_source(cfile)]
-    export_config = ExportConfiguration()
-    target_description = default_test_config()
-    compiler = PIXIECompiler(
-        library_name=args.o,
-        translation_units=tranlastion_units,
-        export_configuration=export_config,
-        baseline_cpu=target_description.baseline_target.cpu,
-        baseline_features=target_description.baseline_target.features,
-        targets_features=target_description._get_targets_features(
-            target_description.baseline_target.features,
-            target_description.baseline_target.cpu,
-        ),
-        python_cext=True,  # TODO allow users to specify this
-        output_dir=".",  # TODO use $PWD for now
-    )
-    compiler.compile()
+    with tempfile.TemporaryDirectory(prefix="__pxbld__") as build_directory:
+        data, cfile = c_from_cython_source(vars(args)["pyx-source"], build_directory)
+        tranlastion_units = [tu_from_c_source(cfile, build_directory)]
+        export_config = ExportConfiguration()
+        target_description = default_test_config()
+        compiler = PIXIECompiler(
+            library_name=args.o,
+            translation_units=tranlastion_units,
+            export_configuration=export_config,
+            baseline_cpu=target_description.baseline_target.cpu,
+            baseline_features=target_description.baseline_target.features,
+            targets_features=target_description._get_targets_features(
+                target_description.baseline_target.features,
+                target_description.baseline_target.cpu,
+            ),
+            python_cext=True,  # TODO allow users to specify this
+            output_dir=".",  # TODO use $PWD for now
+        )
+        compiler.compile()
 
 
 if __name__ == "__main__":
