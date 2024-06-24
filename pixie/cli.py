@@ -16,7 +16,6 @@ from pixie.compiler import (
 
 def tu_from_c_source(fname, build_directory):
     # TODO put this in support.py or utils.py
-    prefix = "pixie-c-build-"
     outfile = os.path.join(build_directory, "tmp.bc")
     cmd = (
         "clang",
