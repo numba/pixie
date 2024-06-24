@@ -144,6 +144,8 @@ class TestSelectors(PixieTestCase):
 
     @arm64_only
     def test_arm64_isa_selector(self):
+        # import BSD access on demand
+        from pixie.targets.bsd_utils import sysctlbyname
 
         dispatch_keys = ('baseline', 'V8_4A', 'V8_5A', 'V8_6A', 'V8_6A_BF16')
         expected, dispatch_data = self.gen_dispatch_and_expected(dispatch_keys)
@@ -180,7 +182,7 @@ class TestSelectors(PixieTestCase):
 
         revmap = {v: k for k, v in expected.items()}
 
-        cpu_brand_name = arm64.sysctlbyname("machdep.cpu.brand_string".encode())
+        cpu_brand_name = sysctlbyname("machdep.cpu.brand_string".encode())
         cpu_brand_name = cpu_brand_name.decode()
         if cpu_brand_name.startswith("Apple M1"):
             correct_result = 'V8_4A'

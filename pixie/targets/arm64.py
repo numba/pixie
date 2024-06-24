@@ -12,9 +12,6 @@ from pixie.targets.common import (
 from pixie.selectors import Selector
 from pixie.mcext import langref
 
-# re-export
-from .bsd_utils import sysctlbyname   # noqa: F401
-
 from . import darwin_info
 
 
