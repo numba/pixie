@@ -46,50 +46,28 @@ class features(FeaturesEnum):
         return self.name.replace('_', '.')
 
 
-class cpu_features(IntEnum):
-    NONE = 0
-
-    # features
-    NEON = 4   # same as fp_armv8
-    DOTPROD = 5
-    FULLFP16 = 6
-    FP16FML = 7
-    SHA3 = 8
-    I8MM = 9
-    BF16 = 10
-
-    # microarch profile
-    V8A = 11
-    V8_1A = 12
-    V8_2A = 13
-    V8_3A = 14
-    V8_4A = 15
-    V8_5A = 16
-    V8_6A = 17
-
-
 class cpu_dispatchable(IntEnum):
-    NEON = (1 << cpu_features.NEON)
-    SHA3 = (1 << cpu_features.SHA3)
+    neon = (1 << features.neon)
+    sha3 = (1 << features.sha3)
 
-    V8A = (1 << cpu_features.V8A) | NEON
-    V8_1A = (1 << cpu_features.V8_1A) | V8A
-    V8_2A = (1 << cpu_features.V8_2A) | V8_1A
-    V8_3A = (1 << cpu_features.V8_3A) | V8_2A
+    v8a = (1 << features.v8a) | neon
+    v8_1a = (1 << features.v8_1a) | v8a
+    v8_2a = (1 << features.v8_2a) | v8_1a
+    v8_3a = (1 << features.v8_3a) | v8_2a
 
-    DOTPROD = (1 << cpu_features.DOTPROD)
-    FULLFP16 = (1 << cpu_features.FULLFP16)
-    FP16FML = (1 << cpu_features.FP16FML)
-    V8_4A = (1 << cpu_features.V8_4A) | V8_3A | FULLFP16 | FP16FML | DOTPROD
+    dotprod = (1 << features.dotprod)
+    fullfp16 = (1 << features.fullfp16)
+    fp16fml = (1 << features.fp16fml)
+    v8_4a = (1 << features.v8_4a) | v8_3a | fullfp16 | fp16fml | dotprod
 
-    V8_5A = (1 << cpu_features.V8_5A) | V8_4A
+    v8_5a = (1 << features.v8_5a) | v8_4a
 
-    I8MM = (1 << cpu_features.I8MM)
-    V8_6A = (1 << cpu_features.V8_6A) | V8_5A | I8MM
+    i8mm = (1 << features.i8mm)
+    v8_6a = (1 << features.v8_6a) | v8_5a | i8mm
 
-    BF16 = (1 << cpu_features.BF16)
+    bf16 = (1 << features.bf16)
 
-    V8_6A_BF16 = V8_6A | BF16
+    v8_6a_bf16 = v8_6a | bf16
 
 
 _cd = cpu_dispatchable
@@ -97,10 +75,10 @@ _cd = cpu_dispatchable
 
 class cpu_family_features(Enum):
     # M1: is +8.4a       +fp-armv8 +fp16fml +fullfp16 +sha3 +ssbs +sb +fptoint
-    APPLE_M1 = _cd.V8_4A | _cd.SHA3
+    APPLE_M1 = _cd.v8_4a | _cd.sha3
     # M2: is +8.4a +8.6a +fp-armv8 +fp16fml +fullfp16 +sha3 +ssbs +sb +fptoint
     #        +bti +predres +i8mm +bf16
-    APPLE_M2 = _cd.V8_6A | _cd.SHA3 | _cd.BF16
+    APPLE_M2 = _cd.v8_6a | _cd.sha3 | _cd.bf16
 
 
 _apple_m1 = CPUDescription(cpus.generic, (features.v8_4a,
@@ -220,3 +198,6 @@ class arm64CPUSelector(Selector):
                     self._select(builder, "baseline")
                 builder.ret_void()
             swt.add_case(i, bb)
+
+
+CPUSelector = arm64CPUSelector

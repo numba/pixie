@@ -147,7 +147,7 @@ class TestSelectors(PixieTestCase):
         # import BSD access on demand
         from pixie.targets.bsd_utils import sysctlbyname
 
-        dispatch_keys = ('baseline', 'V8_4A', 'V8_5A', 'V8_6A', 'V8_6A_BF16')
+        dispatch_keys = ('baseline', 'v8_4a', 'v8_5a', 'v8_6a', 'v8_6a_bf16')
         expected, dispatch_data = self.gen_dispatch_and_expected(dispatch_keys)
 
         selector_class = arm64CPUSelector
@@ -185,9 +185,9 @@ class TestSelectors(PixieTestCase):
         cpu_brand_name = sysctlbyname("machdep.cpu.brand_string".encode())
         cpu_brand_name = cpu_brand_name.decode()
         if cpu_brand_name.startswith("Apple M1"):
-            correct_result = 'V8_4A'
+            correct_result = 'v8_4a'
         elif cpu_brand_name.startswith("Apple M2"):
-            correct_result = 'V8_6A_BF16'
+            correct_result = 'v8_6a_bf16'
         else:
             correct_result = 'baseline'
         assert correct_result == revmap[selected]
