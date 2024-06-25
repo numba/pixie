@@ -67,8 +67,14 @@ class TestIsaDispatch(PixieTestCase):
             assert out.value == 110.
 
             selected_isa = foo_library.__PIXIE__['selected_isa']
+            target_features = set()
+            cfg = getattr(self._target_descr.arch, 'default_configuration')
+            target_features.add(max(cfg['baseline_features']))
+            [target_features.add(max(d.features)) for d in
+             cfg['targets_features']]
             cpu_features = self.get_process_cpu_features()
-            assert selected_isa == str(max(cpu_features))
+            got = max(set(cpu_features) & set(target_features))
+            assert selected_isa == str(got)
 
 
 if __name__ == '__main__':
