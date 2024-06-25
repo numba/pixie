@@ -93,6 +93,12 @@ predefined = SimpleNamespace(
     apple_m2=_apple_m2,
 )
 
+# Default for arm64 will compile for M1 and with additional targets for M2
+default_configuration = {'baseline_cpu': predefined.apple_m1.cpu,
+                         'baseline_features': predefined.apple_m1.features,
+                         'targets_features': (predefined.apple_m2,)}
+
+
 
 class arm64CPUSelector(Selector):
     def selector_impl(self, builder):

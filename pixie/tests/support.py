@@ -248,6 +248,10 @@ class PixieTestCase(TestCase):
             return _predefined_target_strings("x86-64", ("x86-64-v2",
                                                          "x86-64-v3",
                                                          "x86-64-v4"))
+        elif arch == "arm64":
+            return _predefined_target_strings("apple_m1", ("apple_m2",))
+        else:
+            raise NotImplementedError(arch)
 
     def get_process_cpu_features(self, *, arch=None):
         arch = arch or llvm.get_process_triple().split("-")[0]
