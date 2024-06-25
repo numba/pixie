@@ -10,7 +10,7 @@ from pixie.targets.common import (
     CPUDescription,
 )
 from pixie.selectors import Selector
-from pixie.mcext import langref
+from pixie.mcext import c, langref
 
 from . import darwin_info
 
@@ -108,9 +108,16 @@ class arm64CPUSelector(Selector):
 
         check_keys()
 
+        i8 = langref.types.i8
         i32 = langref.types.i32
         i32_ptr = i32.as_pointer()
         i64 = langref.types.i64
+
+        # this is a flag to indicate that some variant matched so don't use
+        # the default, 0 = no match, !0 = match.
+        found = builder.alloca(i8, name="found")
+        self._ctx.init_alloca(builder, found)
+        builder.store(ir.Constant(i8, 0), found)
 
         # commpage address
         commpage_addr = ir.Constant(i64, darwin_info.commpage_addr)
@@ -161,6 +168,7 @@ class arm64CPUSelector(Selector):
             return tuple(cpu_dispatchable.__members__.keys()).index(feat)
 
         variant_order = sorted(list(supplied_variants), key=cpu_release_order)
+        self._generate_env_var_check(builder, found, variant_order)
 
         fn_cpu_family_probe = gen_cpu_family_probe(builder.module)
         cpu_sel = builder.call(fn_cpu_family_probe, ())
@@ -170,6 +178,9 @@ class arm64CPUSelector(Selector):
         with builder.goto_block(bb_default):
             self.debug_print(builder, '[selector] select baseline\n')
             self._select(builder, 'baseline')  # should it be an error?
+            # call sigabrt.
+            self.debug_print(builder, "calling exit\n")
+            c.stdlib.exit(builder, c.sysexits.EX_SOFTWARE)
             builder.ret_void()
 
         def choose_variant(cpu_name) -> str | None:
