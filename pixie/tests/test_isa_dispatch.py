@@ -1,6 +1,5 @@
 from pixie import PIXIECompiler, TranslationUnit, ExportConfiguration
 from pixie.tests.support import PixieTestCase
-from numpy.core._multiarray_umath import __cpu_features__
 import ctypes
 import unittest
 
@@ -68,16 +67,8 @@ class TestIsaDispatch(PixieTestCase):
             assert out.value == 110.
 
             selected_isa = foo_library.__PIXIE__['selected_isa']
-
-            highest_feature = None
-            targets_features_strings = [str(max(x.features)).upper() for x in
-                                        self._target_descr.additional_targets]
-            for isa, present in __cpu_features__.items():
-                if present and isa.upper() in targets_features_strings:
-                    highest_feature = isa
-
-            assert highest_feature is not None
-            assert highest_feature.lower() == selected_isa
+            cpu_features = self.get_process_cpu_features()
+            assert selected_isa == str(max(cpu_features))
 
 
 if __name__ == '__main__':
