@@ -32,15 +32,15 @@ class TestCython(PixieTestCase):
         # TODO: This is shared with the C tests, put it in support.py
         def tu_from_c_source(fname):
             prefix = 'pixie-c-build-'
+
             with tempfile.TemporaryDirectory(prefix=prefix) as build_dir:
                 outfile = os.path.join(build_dir, 'tmp.bc')
-
-                cmd = ('clang', '-x', 'c++',
+                cmd = ('clang',
                        '-I', sysconfig.get_path("include"),
                        '-fPIC', '-mcmodel=small',
                        '-emit-llvm', fname, '-o', outfile, '-c')
                 # TODO: need to check exit status
-                subprocess.run(cmd)
+                subprocess.check_call(cmd)
                 with open(outfile, 'rb') as f:
                     data = f.read()
             return TranslationUnit(fname, data)
