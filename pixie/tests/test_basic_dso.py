@@ -1,3 +1,4 @@
+import sys
 from pixie import PIXIECompiler, TranslationUnit, ExportConfiguration
 from pixie.tests.support import PixieTestCase
 from llvmlite import binding as llvm
@@ -83,6 +84,9 @@ class TestBasicDSO(PixieTestCase):
                 for details in name_info.values():
                     sym = details['symbol']
                     assert sym not in exports  # all symbols should be "new"
+                    if sys.platform.startswith('darwin'):
+                        # darwin adds underscore prefix
+                        sym = "_" + sym
                     exports.add(sym)
             assert exports
             assert exports.issubset(symbols)
