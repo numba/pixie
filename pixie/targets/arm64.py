@@ -10,10 +10,7 @@ from pixie.targets.common import (
     CPUDescription,
 )
 from pixie.selectors import Selector
-from pixie.mcext import langref
-
-# re-export
-from .bsd_utils import sysctlbyname   # noqa: F401
+from pixie.mcext import c, langref
 
 from . import darwin_info
 
@@ -49,48 +46,26 @@ class features(FeaturesEnum):
         return self.name.replace('_', '.')
 
 
-class cpu_features(IntEnum):
-    NONE = 0
-
-    # features
-    neon = 4   # same as fp_armv8
-    dotprod = 5
-    fullfp16 = 6
-    fp16fml = 7
-    sha3 = 8
-    i8mm = 9
-    bf16 = 10
-
-    # microarch profile
-    v8a = 11
-    v8_1a = 12
-    v8_2a = 13
-    v8_3a = 14
-    v8_4a = 15
-    v8_5a = 16
-    v8_6a = 17
-
-
 class cpu_dispatchable(IntEnum):
-    neon = (1 << cpu_features.neon)
-    sha3 = (1 << cpu_features.sha3)
+    neon = (1 << features.neon)
+    sha3 = (1 << features.sha3)
 
-    v8a = (1 << cpu_features.v8a) | neon
-    v8_1a = (1 << cpu_features.v8_1a) | v8a
-    v8_2a = (1 << cpu_features.v8_2a) | v8_1a
-    v8_3a = (1 << cpu_features.v8_3a) | v8_2a
+    v8a = (1 << features.v8a) | neon
+    v8_1a = (1 << features.v8_1a) | v8a
+    v8_2a = (1 << features.v8_2a) | v8_1a
+    v8_3a = (1 << features.v8_3a) | v8_2a
 
-    dotprod = (1 << cpu_features.dotprod)
-    fullfp16 = (1 << cpu_features.fullfp16)
-    fp16fml = (1 << cpu_features.fp16fml)
-    v8_4a = (1 << cpu_features.v8_4a) | v8_3a | fullfp16 | fp16fml | dotprod
+    dotprod = (1 << features.dotprod)
+    fullfp16 = (1 << features.fullfp16)
+    fp16fml = (1 << features.fp16fml)
+    v8_4a = (1 << features.v8_4a) | v8_3a | fullfp16 | fp16fml | dotprod
 
-    v8_5a = (1 << cpu_features.v8_5a) | v8_4a
+    v8_5a = (1 << features.v8_5a) | v8_4a
 
-    i8mm = (1 << cpu_features.i8mm)
-    v8_6a = (1 << cpu_features.v8_6a) | v8_5a | i8mm
+    i8mm = (1 << features.i8mm)
+    v8_6a = (1 << features.v8_6a) | v8_5a | i8mm
 
-    bf16 = (1 << cpu_features.bf16)
+    bf16 = (1 << features.bf16)
 
     v8_6a_bf16 = v8_6a | bf16
 
@@ -118,6 +93,12 @@ predefined = SimpleNamespace(
     apple_m2=_apple_m2,
 )
 
+# Default for arm64 will compile for M1 and with additional targets for M2
+default_configuration = {'baseline_cpu': predefined.apple_m1.cpu,
+                         'baseline_features': predefined.apple_m1.features,
+                         'targets_features': (predefined.apple_m2,)}
+
+
 
 class arm64CPUSelector(Selector):
     def selector_impl(self, builder):
@@ -133,9 +114,16 @@ class arm64CPUSelector(Selector):
 
         check_keys()
 
+        i8 = langref.types.i8
         i32 = langref.types.i32
         i32_ptr = i32.as_pointer()
         i64 = langref.types.i64
+
+        # this is a flag to indicate that some variant matched so don't use
+        # the default, 0 = no match, !0 = match.
+        found = builder.alloca(i8, name="found")
+        self._ctx.init_alloca(builder, found)
+        builder.store(ir.Constant(i8, 0), found)
 
         # commpage address
         commpage_addr = ir.Constant(i64, darwin_info.commpage_addr)
@@ -186,6 +174,7 @@ class arm64CPUSelector(Selector):
             return tuple(cpu_dispatchable.__members__.keys()).index(feat)
 
         variant_order = sorted(list(supplied_variants), key=cpu_release_order)
+        self._generate_env_var_check(builder, found, variant_order)
 
         fn_cpu_family_probe = gen_cpu_family_probe(builder.module)
         cpu_sel = builder.call(fn_cpu_family_probe, ())
@@ -195,6 +184,9 @@ class arm64CPUSelector(Selector):
         with builder.goto_block(bb_default):
             self.debug_print(builder, '[selector] select baseline\n')
             self._select(builder, 'baseline')  # should it be an error?
+            # call sigabrt.
+            self.debug_print(builder, "calling exit\n")
+            c.stdlib.exit(builder, c.sysexits.EX_SOFTWARE)
             builder.ret_void()
 
         def choose_variant(cpu_name) -> str | None:
@@ -223,5 +215,6 @@ class arm64CPUSelector(Selector):
                     self._select(builder, "baseline")
                 builder.ret_void()
             swt.add_case(i, bb)
+
 
 CPUSelector = arm64CPUSelector

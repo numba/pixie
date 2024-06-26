@@ -1,3 +1,4 @@
+import platform
 from types import SimpleNamespace
 from llvmlite import ir
 
@@ -31,10 +32,16 @@ langref.types.i64 = ir.IntType(64)
 
 c = SimpleNamespace()
 # need to declare this early as other things rely on it
-_va_list_ty = ir.LiteralStructType([langref.types.i32,
+_va_list_ty_struct = ir.LiteralStructType([langref.types.i32,
                                     langref.types.i32,
                                     langref.types.i8.as_pointer(),
                                     langref.types.i8.as_pointer()])
+_va_list_ty_i8 = langref.types.i8.as_pointer()
+
+VA_LIST_IS_I8PTR = not platform.machine().startswith("x86")
+
+_va_list_ty =  (_va_list_ty_i8 if VA_LIST_IS_I8PTR else _va_list_ty_struct)
+
 c.stdarg = SimpleNamespace(va_list=_va_list_ty)
 
 
@@ -309,12 +316,18 @@ def _printf(builder, _fmt, *varargs):
 
         local_builder.call(llvm_va_start_fn, (va_list,))
 
+        if VA_LIST_IS_I8PTR:
+            inner_args = local_builder.load(va_list_ptr)
+        else:
+            inner_args = va_list_ptr
+
         vprintf_fnty = ir.FunctionType(c.types.void,
                                        (_fmt.type,
-                                        c.stdarg.va_list.as_pointer()))
+                                        inner_args.type))
         c_fn = get_or_insert_function(builder.module, vprintf_fnty, "vprintf")
 
-        local_builder.call(c_fn, (fn.args[0], va_list_ptr))
+
+        local_builder.call(c_fn, (fn.args[0], inner_args))
 
         llvm_va_end_fnty = ir.FunctionType(langref.types.void, (i8_ptr,))
         llvm_va_end_fn = get_or_insert_function(builder.module,

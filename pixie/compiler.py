@@ -22,6 +22,9 @@ from pixie import llvm_types as lt
 
 IS_LINUX = sys.platform.startswith('linux')
 
+defaultDSOHandler = (shmEmbeddedDSOHandler if IS_LINUX
+                     else mkstempEmbeddedDSOHandler)
+
 
 class SimpleCompiler():
     # takes llvm_ir, compiles it to an object file
@@ -214,6 +217,7 @@ class PIXIECompiler():
                                                baseline_cpu,
                                                baseline_features,
                                                targets_features)
+        print(self._target_descr)
 
     def compile(self):
         ir_mod = ir.Module()
@@ -496,7 +500,7 @@ class PIXIEModule(IRGenerator):
 
         # create the DSO constructor, it does the select and dispatch
         selector_class = self._target_descr.arch.CPUSelector
-        dso_handler = shmEmbeddedDSOHandler()
+        dso_handler = defaultDSOHandler()
         emap = ElfMapper(mod)
         emap.create_dso_ctor(binaries, selector_class, dso_handler)
         # create the DSO destructor, it cleans up the resources used by the

@@ -248,6 +248,45 @@ class PixieTestCase(TestCase):
             return _predefined_target_strings("x86-64", ("x86-64-v2",
                                                          "x86-64-v3",
                                                          "x86-64-v4"))
+        elif arch == "arm64":
+            return _predefined_target_strings("apple_m1", ("apple_m2",))
+        else:
+            raise NotImplementedError(arch)
+
+    def get_process_cpu_features(self, *, arch=None):
+        arch = arch or llvm.get_process_triple().split("-")[0]
+        if arch == "x86_64":
+            # On x86_64, use NumPy
+            from numpy.core._multiarray_umath import __cpu_features__
+            from pixie.targets import x86_64
+            known_features = x86_64.features.__members__
+            out = set()
+            for isa, present in __cpu_features__.items():
+                if present:
+                    feat = known_features.get(isa.lower())
+                    if feat is not None:
+                        out.add(feat)
+            return out
+        elif arch == "arm64":
+            # On arm64, NumPy doesn't provide enough granularity. Use custom
+            # logic instead.
+
+            # import BSD access on demand
+            from pixie.targets.bsd_utils import sysctlbyname
+            from pixie.targets import arm64
+
+            cpu_brand_name = sysctlbyname("machdep.cpu.brand_string".encode())
+            cpu_brand_name = cpu_brand_name.decode()
+            if cpu_brand_name.startswith("Apple M1"):
+                result = arm64.predefined.apple_m1.features
+            elif cpu_brand_name.startswith("Apple M2"):
+                result = arm64.predefined.apple_m2.features
+            else:
+                raise NotImplementedError
+
+            return result
+        else:
+            raise ValueError(f"Unsupported arch: '{arch}'.")
 
 
 @lru_cache
