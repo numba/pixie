@@ -60,7 +60,9 @@ jobs:
       fail-fast: false
       matrix:
         # macos-14 is M1
-        os: [macos-12, macos-14]
+        # Turn off macos-12 (x86) for now because of the TAPI problem
+        os: [macos-14]
+        # os: [macos-12, macos-14]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
