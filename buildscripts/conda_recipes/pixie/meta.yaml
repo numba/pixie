@@ -25,7 +25,7 @@ requirements:
     - setuptools_scm
   run:
     - python
-    - llvmlite
+    - llvmlite >=0.44.0dev0
     - setuptools
 
 test:
@@ -35,6 +35,8 @@ test:
     - pytest
     - numpy
     - numba
+    - clangxx 14.*
+    - cython
   commands:
     - pytest --pyargs pixie
 
