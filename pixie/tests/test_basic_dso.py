@@ -36,6 +36,14 @@ llvm_foo_i64_i64 = """
            """
 
 
+llvm_bar_double_double_ret_double = """
+    define double @_Z3bardd(double %0, double %1) {
+    %3 = fadd double %0, %1
+    ret double %3
+    }
+    """
+
+
 class TestBasicDSO(PixieTestCase):
     """Test basic DSO things for PIXIE libraries, like symbols existing and the
     module namespace layout.
@@ -50,6 +58,8 @@ class TestBasicDSO(PixieTestCase):
                                    llvm_foo_double_double))
         tus.append(TranslationUnit("llvm_foo_i64_i64",
                                    llvm_foo_i64_i64))
+        tus.append(TranslationUnit("llvm_bar_double_double_ret_double",
+                                   llvm_bar_double_double_ret_double))
 
         export_config = ExportConfiguration()
         export_config.add_symbol(python_name='foo',
