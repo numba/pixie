@@ -468,8 +468,11 @@ class PIXIEModule(IRGenerator):
                             builder.load(fnptr_cache), fnty_as_ptr),
                             fnptr_local_ref)
                 fn = builder.load(fnptr_local_ref)
-                builder.call(fn, trampoline_fn.args)
-                builder.ret_void()
+                ret = builder.call(fn, trampoline_fn.args)
+                if ret.type == ir.VoidType():
+                    builder.ret_void()
+                else:
+                    builder.ret(ret)
 
     def _embed_bitcode(self, mod):
         ctx = Context()
