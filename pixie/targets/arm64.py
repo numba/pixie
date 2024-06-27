@@ -45,6 +45,12 @@ class features(FeaturesEnum):
 
 
 class cpu_dispatchable(IntEnum):
+    # The info here is incomplete. Contains minimal for M1 and M2 to work.
+    # AppleA14 (M1) is v8.4a + more
+    # AppleA15 (M2) is v8.6a + more
+    # References:
+    # - https://github.com/llvm/llvm-project/blob/ca33796d54ce6d2c711032b269caf32851c5915a/clang/lib/Basic/Targets/AArch64.cpp#L59  # noqa: 501
+    # - https://github.com/llvm/llvm-project/blob/31440738bd6b1345ea978914fe01d2e19f4aa373/llvm/lib/Target/AArch64/AArch64Processors.td#L743-L752  # noqa: 501
     neon = (1 << features.neon)
     sha3 = (1 << features.sha3)
 
@@ -72,8 +78,12 @@ _cd = cpu_dispatchable
 
 
 class cpu_family_features(Enum):
+    # According to https://github.com/JuliaLang/julia/blob/68fe51285f928ca5ca3629ad28ede14f0877b671/src/processor_arm.cpp#L358  # noqa: 501
+    # With fix for base arch; see https://github.com/llvm/llvm-project/commit/39f09e8dcd9ceff5c5030ede6393155782b7cdad  # noqa: 501
     # M1: is +8.4a       +fp-armv8 +fp16fml +fullfp16 +sha3 +ssbs +sb +fptoint
     APPLE_M1 = _cd.v8_4a | _cd.sha3
+    # According to https://github.com/JuliaLang/julia/blob/68fe51285f928ca5ca3629ad28ede14f0877b671/src/processor_arm.cpp#L358  # noqa: 501
+    # With fix for base arch. See LLVM references.
     # M2: is +8.4a +8.6a +fp-armv8 +fp16fml +fullfp16 +sha3 +ssbs +sb +fptoint
     #        +bti +predres +i8mm +bf16
     APPLE_M2 = _cd.v8_6a | _cd.sha3 | _cd.bf16
@@ -185,8 +195,8 @@ class arm64CPUSelector(Selector):
             hw_feat_check_fn = gen_sysctlbyname(module)
 
             # Use CPU features to determine the CPU model.
-            # DotProd implies M1
-            # BF15 implies M2
+            # DotProd implies at least M1. https://github.com/llvm/llvm-project/blob/ca33796d54ce6d2c711032b269caf32851c5915a/clang/lib/Basic/Targets/AArch64.cpp#L87  # noqa: 501
+            # BF16 implies at least M2. https://github.com/llvm/llvm-project/blob/ca33796d54ce6d2c711032b269caf32851c5915a/clang/lib/Basic/Targets/AArch64.cpp#L75  # noqa: 501
             feature_list = {
                 # The feature names are from
                 # https://github.com/llvm/llvm-project/blob/cad72632eb0d612fe18c38ac4526d80a6b800f96/compiler-rt/lib/builtins/cpu_model/aarch64/fmv/apple.inc#L117-L146 # noqa: 501
