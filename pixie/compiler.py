@@ -22,6 +22,10 @@ from pixie import llvm_types as lt
 
 IS_LINUX = sys.platform.startswith('linux')
 
+# TODO: fix for x-compile
+defaultDSOHandler = (shmEmbeddedDSOHandler if IS_LINUX
+                     else mkstempEmbeddedDSOHandler)
+
 
 class SimpleCompiler():
     # takes llvm_ir, compiles it to an object file
@@ -464,8 +468,11 @@ class PIXIEModule(IRGenerator):
                             builder.load(fnptr_cache), fnty_as_ptr),
                             fnptr_local_ref)
                 fn = builder.load(fnptr_local_ref)
-                builder.call(fn, trampoline_fn.args)
-                builder.ret_void()
+                ret = builder.call(fn, trampoline_fn.args)
+                if ret.type == ir.VoidType():
+                    builder.ret_void()
+                else:
+                    builder.ret(ret)
 
     def _embed_bitcode(self, mod):
         ctx = Context()
@@ -496,7 +503,7 @@ class PIXIEModule(IRGenerator):
 
         # create the DSO constructor, it does the select and dispatch
         selector_class = self._target_descr.arch.CPUSelector
-        dso_handler = shmEmbeddedDSOHandler()
+        dso_handler = defaultDSOHandler()
         emap = ElfMapper(mod)
         emap.create_dso_ctor(binaries, selector_class, dso_handler)
         # create the DSO destructor, it cleans up the resources used by the

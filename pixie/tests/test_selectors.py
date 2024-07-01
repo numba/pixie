@@ -1,10 +1,15 @@
-from pixie.targets.x86_64 import features
+from pixie.targets import x86_64, arm64
 from pixie.targets.common import Features
-from pixie.dso_tools import ElfMapper, shmEmbeddedDSOHandler
+from pixie.dso_tools import (
+    ElfMapper,
+    shmEmbeddedDSOHandler,
+    mkstempEmbeddedDSOHandler,
+)
 from pixie.mcext import c
 from pixie.selectors import PyVersionSelector
 from pixie.targets.x86_64 import x86CPUSelector
-from pixie.tests.support import PixieTestCase, x86_64_only
+from pixie.targets.arm64 import arm64CPUSelector
+from pixie.tests.support import PixieTestCase, x86_64_only, arm64_only
 from pixie.compiler import SimpleCompilerDriver
 from llvmlite import ir
 from llvmlite import binding as llvm
@@ -69,7 +74,7 @@ class TestSelectors(PixieTestCase):
         expected, dispatch_data = self.gen_dispatch_and_expected(dispatch_keys)
 
         selector_class = PyVersionSelector
-        dso_handler = shmEmbeddedDSOHandler()
+        dso_handler = mkstempEmbeddedDSOHandler()
         llvm_ir = self.gen_mod(dispatch_data, selector_class, dso_handler)
 
         dso = os.path.join(self.tmpdir.name, uuid.uuid4().hex)
@@ -107,7 +112,7 @@ class TestSelectors(PixieTestCase):
 
         # Compile into DSO
         dso = os.path.join(self.tmpdir.name, uuid.uuid4().hex)
-        target_features = Features((features.sse2,))
+        target_features = Features((x86_64.features.sse2,))
         compiler_driver = SimpleCompilerDriver(target_cpu='nocona',
                                                target_features=target_features)
         compiler_driver.compile_and_link(sources=(llvm_ir,), outfile=dso)
@@ -134,3 +139,53 @@ class TestSelectors(PixieTestCase):
 
         assert highest_feature is not None
         assert extracted_embedded_dso.foo() == expected[highest_feature.lower()]
+
+    @arm64_only
+    def test_arm64_isa_selector(self):
+        # import BSD access on demand
+        from pixie.targets.bsd_utils import sysctlbyname
+
+        dispatch_keys = ('baseline', 'v8_4a', 'v8_5a', 'v8_6a', 'v8_6a_bf16')
+        expected, dispatch_data = self.gen_dispatch_and_expected(dispatch_keys)
+
+        selector_class = arm64CPUSelector
+        dso_handler = mkstempEmbeddedDSOHandler()
+        llvm_ir = self.gen_mod(dispatch_data, selector_class, dso_handler)
+
+        # Compile into DSO
+        dso = os.path.join(self.tmpdir.name, uuid.uuid4().hex)
+        target_features = Features((
+            arm64.features.v8_6a, arm64.features.bf16,
+        ))
+        compiler_driver = SimpleCompilerDriver(target_cpu='apple-m1',
+                                               target_features=target_features)
+        compiler_driver.compile_and_link(sources=(llvm_ir,), outfile=dso)
+
+        # check the DSO loads appropriately.
+        binding = ctypes.CDLL(dso)
+
+        uniq_filepath = dso_handler._EXTRACTED_FILEPATH
+        uniq_filepath_global = getattr(binding, uniq_filepath.name)
+        extracted_embedded_dso_path_bytes = ctypes.cast(uniq_filepath_global,
+                                                        ctypes.c_char_p).value
+        extracted_embedded_dso_path = extracted_embedded_dso_path_bytes.decode()
+        extracted_embedded_dso = ctypes.CDLL(extracted_embedded_dso_path)
+        extracted_embedded_dso.foo.restype = ctypes.c_int
+        extracted_embedded_dso.foo.argtypes = ()
+
+        # Skip numpy feature lookup, it only knows about v8-a features and
+        # on Apple the minimum supported version is v8.4-a.
+
+        selected = extracted_embedded_dso.foo()
+
+        revmap = {v: k for k, v in expected.items()}
+
+        cpu_brand_name = sysctlbyname("machdep.cpu.brand_string".encode())
+        cpu_brand_name = cpu_brand_name.decode()
+        if cpu_brand_name.startswith("Apple M1"):
+            correct_result = 'v8_4a'
+        elif cpu_brand_name.startswith("Apple M2"):
+            correct_result = 'v8_6a_bf16'
+        else:
+            correct_result = 'baseline'
+        assert correct_result == revmap[selected]

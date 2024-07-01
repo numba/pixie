@@ -63,7 +63,11 @@ def create_cpu_enum_for_target(triple_str):
 
     all_cpus = parse_target_info_str(target_info_str)
 
-    return CPUEnum('cpus', all_cpus)
+    def fix_dash(x):
+        # Should this really be here?
+        return x.replace('-', '_')
+
+    return CPUEnum('cpus', list(map(fix_dash, all_cpus)))
 
 
 def display_cpu_names():

@@ -1,6 +1,6 @@
 from pixie import PIXIECompiler, TranslationUnit, ExportConfiguration
-from pixie.tests.support import PixieTestCase
-from pixie.targets.x86_64 import features
+from pixie.tests.support import PixieTestCase, x86_64_only, arm64_only
+from pixie.targets import x86_64, arm64
 import unittest
 
 llvm_foo_double_double = """
@@ -65,7 +65,8 @@ class TestSpecialize(PixieTestCase):
 
         libfoo.compile()
 
-    def test_specialize(self):
+    def _check_specialize(self, baseline_cpu, baseline_features,
+                          target_feature):
         foo_ref = None
         with self.load_pixie_module('foo_library') as foo_library:
             # use to hold a reference to the original loaded module
@@ -73,10 +74,11 @@ class TestSpecialize(PixieTestCase):
             # cursory check that foo_library is ok
             assert foo_library.__PIXIE__['is_specialized'] is False
             # now specialize
-            feat = features.avx512f
-            foo_library.__PIXIE__['specialize'](baseline_cpu='nocona',
-                                                baseline_features=features.sse3,
-                                                targets_features=(feat,),)
+            foo_library.__PIXIE__['specialize'](
+                baseline_cpu=baseline_cpu,
+                baseline_features=baseline_features,
+                targets_features=(target_feature,),
+            )
 
         # Reload
         with self.load_pixie_module('foo_library') as foo_library_specialized:
@@ -88,6 +90,18 @@ class TestSpecialize(PixieTestCase):
                                   strict=False)
 
             # TODO: check the machine code is about right for the given chips
+
+    @x86_64_only
+    def test_specialize_x86_64(self):
+        self._check_specialize('nocona',
+                               x86_64.features.sse3,
+                               x86_64.features.avx512f)
+
+    @arm64_only
+    def test_specialize_arm64(self):
+        self._check_specialize('apple_m1',
+                               arm64.features.v8_4a,
+                               arm64.features.v8_6a)
 
 
 if __name__ == '__main__':
