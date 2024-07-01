@@ -74,8 +74,6 @@ class TestSelectors(PixieTestCase):
         expected, dispatch_data = self.gen_dispatch_and_expected(dispatch_keys)
 
         selector_class = PyVersionSelector
-        # FIXME: shmEmbeddedDSOHandler probably used the wrong shm_open flag
-        # dso_handler = shmEmbeddedDSOHandler()
         dso_handler = mkstempEmbeddedDSOHandler()
         llvm_ir = self.gen_mod(dispatch_data, selector_class, dso_handler)
 

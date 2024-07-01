@@ -22,6 +22,7 @@ from pixie import llvm_types as lt
 
 IS_LINUX = sys.platform.startswith('linux')
 
+# TODO: fix for x-compile
 defaultDSOHandler = (shmEmbeddedDSOHandler if IS_LINUX
                      else mkstempEmbeddedDSOHandler)
 
@@ -217,7 +218,6 @@ class PIXIECompiler():
                                                baseline_cpu,
                                                baseline_features,
                                                targets_features)
-        print(self._target_descr)
 
     def compile(self):
         ir_mod = ir.Module()

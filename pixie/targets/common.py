@@ -72,7 +72,7 @@ def create_cpu_enum_for_target(triple_str):
 
 def display_cpu_names():
     triple = llvm.get_process_triple()
-    print(f"Valid CPU name.replace('_', '-')s based on the current process LLVM triple: {triple}")
+    print(f"Valid CPU names based on the current process LLVM triple: {triple}")
     for x in create_cpu_enum_for_target(triple):
         print(f" - {x}")
 

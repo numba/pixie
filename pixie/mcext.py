@@ -38,6 +38,7 @@ _va_list_ty_struct = ir.LiteralStructType([langref.types.i32,
                                     langref.types.i8.as_pointer()])
 _va_list_ty_i8 = langref.types.i8.as_pointer()
 
+#TODO: fix for x-compile
 VA_LIST_IS_I8PTR = not platform.machine().startswith("x86")
 
 _va_list_ty =  (_va_list_ty_i8 if VA_LIST_IS_I8PTR else _va_list_ty_struct)

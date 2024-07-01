@@ -107,10 +107,7 @@ def pixie_cc():
             export_configuration=export_config,
             baseline_cpu=target_description.baseline_target.cpu,
             baseline_features=target_description.baseline_target.features,
-            targets_features=target_description._get_targets_features(
-                target_description.baseline_target.features,
-                target_description.baseline_target.cpu,
-            ),
+            targets_features=target_description.additional_targets,
             python_cext=True,  # TODO allow users to specify this
             output_dir=".",  # TODO use $PWD for now
         )
@@ -141,10 +138,7 @@ def pixie_cythonize():
             export_configuration=export_config,
             baseline_cpu=target_description.baseline_target.cpu,
             baseline_features=target_description.baseline_target.features,
-            targets_features=target_description._get_targets_features(
-                target_description.baseline_target.features,
-                target_description.baseline_target.cpu,
-            ),
+            targets_features=target_description.additional_targets,
             python_cext=True,  # TODO allow users to specify this
             output_dir=".",  # TODO use $PWD for now
         )
