@@ -151,7 +151,7 @@ class TranslationUnit():
         # Takes a C-language source file at path `path_to_c_file` and produces a
         # translation unit from it via a call to clang.
         with tempfile.NamedTemporaryFile(suffix=".ll") as ntf:
-            # NOTE: This needs to be -O1 or great, -O0 adds `optnone` to
+            # NOTE: This needs to be -O1 or greater, -O0 adds `optnone` to
             # function attributes which then prevents optimisation by the PIXIE
             # toolchain.
             cmd = ('clang', '-x', 'c', '-O1',
