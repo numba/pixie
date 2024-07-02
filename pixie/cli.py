@@ -125,14 +125,15 @@ def pixie_cc():
                         TranslationUnit(**tu)
                     )
                 elif 'path' in tu:
-                    file_type = tu.pop('path').split('.')[-1]
+                    file_path = tu.pop('path')
+                    file_type = file_path.split('.')[-1]
                     if file_type == 'c':
                         tranlastion_units.append(
-                            TranslationUnit.from_c_source(tu['path'], **tu)
+                            TranslationUnit.from_c_source(file_path, **tu)
                         )
                     elif file_type == 'pyx':
                         tranlastion_units.append(
-                            TranslationUnit.from_cython_source(tu['path'], **tu)
+                            TranslationUnit.from_cython_source(file_path, **tu)
                         )
                 else:
                     raise ValueError("Invalid file type provided in path")
