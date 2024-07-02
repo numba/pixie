@@ -4,7 +4,6 @@ import inspect
 import sys
 import re
 import textwrap
-from collections import namedtuple
 from enum import Enum, IntEnum
 from functools import cached_property
 from llvmlite import binding as llvm
@@ -145,26 +144,6 @@ class CPUDescription():
         return True
 
 
-llvm_triple = namedtuple("llvm_triple", "arch sub vendor sys abi")
-
-
-def decode_llvm_triple(triple):
-    # strings are generally of form <arch>-<sub>-<vendor>-<sys>-<abi>
-    splitted = triple.split("-")
-    lsplitted = len(splitted)
-    if lsplitted < 3 or lsplitted > 5:
-        raise ValueError("Unknown LLVM triple format (wrong number of fields).")
-    # TODO: get an actual binding to llvm for this instead of guessing
-    # if it's an actual triple, it's probably <arch>-<vendor>-<sys>
-    if lsplitted == 3:
-        return llvm_triple(splitted[0], "", splitted[1], splitted[2], "")
-    # if it's a quadruple, it's probably <arch>-<vendor>-<sys>-<abi>
-    elif lsplitted == 4:
-        return llvm_triple(splitted[0], "", *splitted[1:])
-    else:
-        return llvm_triple(*splitted)
-
-
 class TargetDescription():
     # this normalizes the target. It's also where to edit to start to support
     # cross compilation, key a target off the baseline_cpu.
@@ -175,7 +154,7 @@ class TargetDescription():
                               targets_features)
 
     def _canonicalize_cpu(self, cpu, kwarg):
-        msg = (f"Target '{self.target_triple.arch}' has no CPU named "
+        msg = (f"Target '{self.target_triple.Arch}' has no CPU named "
                f"'{cpu}' (offending argument supplied to "
                f"{kwarg})")
         if isinstance(cpu, str):
@@ -197,7 +176,7 @@ class TargetDescription():
 
     def _canonicalize_feature(self, feat, kwarg):
         msg = (f"Feature '{feat}' is not a known feature for "
-               f"target '{self.target_triple.arch}' (offending argument "
+               f"target '{self.target_triple.Arch}' (offending argument "
                f"supplied to {kwarg})")
         ret = None
         if isinstance(feat, str):
@@ -311,8 +290,8 @@ class TargetDescription():
 
     def _validate_target(self, target_triple, baseline_cpu, baseline_features,
                          targets_features):
-        self.target_triple = decode_llvm_triple(target_triple)
-        arch_mod = f"pixie.targets.{self.target_triple.arch}"
+        self.target_triple = llvm.get_triple_parts(target_triple)
+        arch_mod = f"pixie.targets.{self.target_triple.Arch}"
         self.arch = importlib.import_module(arch_mod)
 
         # check baseline cpu
@@ -330,7 +309,7 @@ class TargetDescription():
     def __str__(self):
         buf = []
         buf.append("Target Description:")
-        buf.append(f"arch: {self.target_triple.arch}")
+        buf.append(f"arch: {self.target_triple.Arch}")
         buf.append(f"arch class: {self.arch}")
         buf.append(f"baseline CPU: {self.baseline_target.cpu}")
         baseline_features = [str(x) for x in self.baseline_target.features]
@@ -353,7 +332,7 @@ def get_default_configuration(triple=None):
     else:
         _triple = triple
 
-    target_triple = decode_llvm_triple(_triple)
-    arch_mod_name = f"pixie.targets.{target_triple.arch}"
+    target_triple = llvm.get_triple_parts(_triple)
+    arch_mod_name = f"pixie.targets.{target_triple.Arch}"
     arch_mod = importlib.import_module(arch_mod_name)
     return arch_mod.default_configuration

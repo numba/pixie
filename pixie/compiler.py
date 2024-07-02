@@ -308,7 +308,7 @@ class PIXIECompiler():
                                 uuid=self._uuid)
         # always set the bitcode to be emitted
         # set the wiring method based on platform
-        target_system = self._target_descr.target_triple.sys
+        target_system = self._target_descr.target_triple.OS
         wiring = "ifunc" if "linux" in target_system else "trampoline"
         pixie_mod.generate_ir(ir_mod, python_cext=self._python_cext,
                               wiring=wiring)
