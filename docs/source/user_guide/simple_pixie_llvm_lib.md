@@ -17,7 +17,10 @@ kernelspec:
 This notebook is building upon knowledge of [Compiling a PIXIE library from C](./simple_pixie_c_lib.md)
 and show how to build a PIXIE library from LLVM-IR.
 
-This notebook requires a working clang 14 compiler. You can install it with `conda install clang=14`.
+PIXIE can directly ingest LLVM-IR such that any LLVM-emitting compiler frontend 
+can build PIXIE libraries.
+
+Let's start with some LLVM-IR as Python strings:
 
 ```{code-cell} ipython3
 llvm_add_f64 = """
@@ -55,7 +58,8 @@ from pixie.targets import get_default_configuration
 ```{code-cell} ipython3
 src = "simple_add_llvm.ll"
 tus = [
-    # The main difference is here. The TranslationUnit takes the LLVM-IR string directly.
+    # The only difference is here. 
+    # The TranslationUnit takes the LLVM-IR string directly.
     TranslationUnit("llvm_add_f64", llvm_add_f64),
     TranslationUnit("llvm_add_f32", llvm_add_f32),
 ]
