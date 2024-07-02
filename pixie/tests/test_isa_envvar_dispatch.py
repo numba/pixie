@@ -1,12 +1,7 @@
 import sys
 import platform
 from pixie import PIXIECompiler, TranslationUnit, ExportConfiguration
-from pixie.tests.support import (
-    PixieTestCase,
-    needs_subprocess,
-    x86_64_only,
-    arm64_only,
-)
+from pixie.tests.support import PixieTestCase, needs_subprocess
 from pixie.mcext import c
 import ctypes
 import os
@@ -122,7 +117,7 @@ class TestIsaEnvVarDispatch(PixieTestCase):
                       out.decode())
         if sys.platform.startswith("darwin"):
             err = b''.join(ln for ln in err.splitlines()
-                                if not ln.startswith(b'ld: warning:'))
+                           if not ln.startswith(b'ld: warning:'))
         assert err == b""
 
 

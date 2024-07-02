@@ -1,6 +1,5 @@
 from pixie import PIXIECompiler, TranslationUnit, ExportConfiguration
 from pixie.tests.support import PixieTestCase
-from numpy.core._multiarray_umath import __cpu_features__
 import ctypes
 import unittest
 

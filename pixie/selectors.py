@@ -104,7 +104,7 @@ class Selector():
             builder.module, "PIXIE_USE_ISA")
         # this returns a char * to the env var contents, or NULL if no match
         PIXIE_USE_ISA_value = c.stdlib.getenv(builder,
-                                                PIXIE_USE_ISA_env_var_str)
+                                              PIXIE_USE_ISA_env_var_str)
         envvar_set_pred = builder.not_(
             self._ctx.is_null(builder, PIXIE_USE_ISA_value))
         self.debug_print(builder, "Testing for env var dispatch.\n")
@@ -120,8 +120,8 @@ class Selector():
                     feature_name_str = self._ctx.insert_const_string(
                         builder.module, specific_feature)
                     strcmp_res = c.string.strncmp(builder, PIXIE_USE_ISA_value,
-                                                    feature_name_str,
-                                                    max_len)
+                                                  feature_name_str,
+                                                  max_len)
                     pred = builder.icmp_signed("==", strcmp_res, zero)
                     with builder.if_then(pred):
                         msg = "Using version from env var: PIXIE_USE_ISA=%s\n"
@@ -133,14 +133,14 @@ class Selector():
 
                 # check that a match was found and abort otherwise
                 pred = builder.icmp_unsigned("==", builder.load(found),
-                                                ir.Constant(i8, 0))
+                                             ir.Constant(i8, 0))
                 with builder.if_then(pred, likely=False):
                     message = ("No matching library is available for ISA "
-                                "\"%s\" supplied via environment variable "
-                                "PIXIE_USE_ISA.\n"
-                                "\nThis error is unrecoverable and the program "
-                                "will now exit. Try checking that the supplied "
-                                "ISA is valid and then rerun.\n")
+                               "\"%s\" supplied via environment variable "
+                               "PIXIE_USE_ISA.\n"
+                               "\nThis error is unrecoverable and the program "
+                               "will now exit. Try checking that the supplied "
+                               "ISA is valid and then rerun.\n")
                     error_message = self._ctx.insert_const_string(
                         builder.module, message)
                     c.stdio.printf(builder, error_message, PIXIE_USE_ISA_value)
