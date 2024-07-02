@@ -71,13 +71,12 @@ Running the demos:
 
       $ python pixie_compile_objective_function.py
 
-      to build an ``objective_function`` extension module from the
-      ``objective_function.pyx`` Cython source.
-
+   to build an ``objective_function`` extension module from the
+   ``objective_function.pyx`` Cython source. Run::
 
       $ python example_1.py
 
-      See the Python file for an explanation of what is happening.
+   See the Python file for an explanation of what is happening.
 
 2. Demo 2. demonstrates various ways to call functions in a PIXIE compiled
    extension module.
@@ -86,37 +85,37 @@ Running the demos:
 
       $ python pixie_compile_objective_function.py
 
-      to build an ``objective_function`` extension module from the
-      ``objective_function.pyx`` Cython source.
+   to build an ``objective_function`` extension module from the
+   ``objective_function.pyx`` Cython source. Run::
 
       $ python example_2.py
 
-      to demonstrate using the extension module from both the Python interpreter
-      and Numba ``@jit`` compiled regions. See the Python file for an
-      explanation of what is happening.
+   to demonstrate using the extension module from both the Python interpreter
+   and Numba ``@jit`` compiled regions. See the Python file for an
+   explanation of what is happening.
 
 3. Demo 3. demonstrates the power of ISA based dispatch (this demo is for
-   ``x86_64` systems only and best run on a recently new machine).
+   ``x86_64` systems only and best run on a relatively new machine).
 
    Run::
 
-      $ python pixie_compile_fd_kernel.py
+      $ python pixie_compile_blas_kernels.py
 
-      to build an ``fd_kernel`` extension module from the ``fd_kernel.pyx``
-      Cython source.
+   to build an ``blas_kernels`` extension module from the
+   ``blas_kernels.pyx`` Cython source. Run::
 
 
       $ python example_3.py
 
-      This will print a runtime for executing with the embedded library variant
-      the best matches the CPU on which it is running. Now rerun with the oldest
-      ISA available in the default configuration ("sse2") via setting an
-      environment variable:
+   This will print a runtime for executing with the embedded library variant
+   the best matches the CPU on which it is running. Now rerun with the oldest
+   ISA available in the default configuration ("sse2") via setting an
+   environment variable::
 
       $ PIXIE_USE_ISA="sse2" python example_3.py
 
-      This will print another runtime, note how much slower the code runs with
-      the older instruction set.
+   This will print another runtime, note how much slower the code runs with
+   the older instruction set.
 
 4. Demo 4. demonstrates multiple input source languages and use of both AOT and
    JIT compiled code.

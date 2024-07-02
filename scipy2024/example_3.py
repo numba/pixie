@@ -1,15 +1,21 @@
 import numpy as np
 import timeit
-import fd_kernel
+import blas_kernels
 
-n = 1_000_000
-x = np.arange(n, dtype=np.float32)
-h = np.float32(0.1)
+rows = 1024
+cols = 4096
+
+dt = np.float32
+A = np.ones((rows, cols), dt)
+x = np.ones(cols, dt)
+y = np.zeros(rows, dt)
 
 
 def work():
-    fd_kernel.central_diff_order2(x, h)
+    blas_kernels.sgemv(y, A, x)
 
 
 times = timeit.repeat(work, repeat=10, number=1)
-print(f"Fastest time: {min(times)} (s).")
+print(f"Fastest time: {min(times):f} (s).")
+
+np.testing.assert_allclose(np.dot(A, x), y)
