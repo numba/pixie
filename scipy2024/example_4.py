@@ -22,7 +22,7 @@ from numba_helpers import pixie_converter, gen_pixie_raw_callsite
 # 3. A third "author" writes a Newton-Raphson solver in Python and compiles into
 #    another PIXIE library shipped by their package using the Numba AOT
 #    compiler.
-# 4. The libraries in 1., 2. and 3. are used by a third author in their custom
+# 4. The libraries in 1., 2. and 3. are used by a fourth author in their custom
 #    application, which is compiled with Numba's JIT compiler, and choices can
 #    be made about whether to call via bitcode or via symbols."
 
