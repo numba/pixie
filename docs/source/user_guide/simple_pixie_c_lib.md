@@ -74,6 +74,8 @@ Now that we have made a DSO with name `my_c_example` as a Python C-extension lib
 import my_c_example
 ```
 
+## ``__PIXIE__``
+
 A PIXIE library has a special `__PIXIE__` attribute
 
 ```{code-cell} ipython3
@@ -110,6 +112,10 @@ Output:
  'specialize': <function specialize.<locals>.impl(baseline_cpu='host', baseline_features=None, targets_features=None)>,
  'selected_isa': 'v8_4a'}
 ```
+
++++
+
+## Get Symbols
 
 +++
 
@@ -152,6 +158,10 @@ Output:
 ['void(double*, double*, double*)', 'void(float*, float*, float*)']
 ```
 
++++
+
+## Call exported symbols
+
 ```{code-cell} ipython3
 from ctypes import c_double, byref
 
@@ -169,6 +179,20 @@ Output:
 c_double(4.6)
 ```
 
-```{code-cell} ipython3
++++
 
+## Inspect available ISAs
+
+A key feature in PIXIE is compiling for architecture variants. On MacOS arm64, PIXIE specializes for the ARM v8.4a and v8.6a profiles, which matches Apple M1 and Apple M2, respectively. 
+
+```{code-cell} ipython3
+print("Available ISAs:", pixie_dict['available_isas'])
+print("Selected ISA:", pixie_dict['selected_isa'])
+```
+
+Output (Ran on a M1):
+
+```
+Available ISAs: ['v8_4a', 'v8_6a', 'baseline']
+Selected ISA: v8_4a
 ```
