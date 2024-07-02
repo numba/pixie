@@ -3,7 +3,7 @@ import os
 import subprocess
 import sysconfig
 import tempfile
-
+import json
 from llvmlite import binding as llvm
 
 from pixie.compiler import (
@@ -93,13 +93,53 @@ def pixie_cc():
         "-O", metavar="<n>", type=int, nargs=1, help="optimization level"
     )
     parser.add_argument("c-source", help="input source file")
+    parser.add_argument("-C","--config", help="Configuration JSON file")
     args = parser.parse_args()
     # TODO: verbose
     print(args)
 
+    def load_config(config_file):
+        with open(config_file, 'r') as f:
+            config = json.load(f)
+        return config
+
     with tempfile.TemporaryDirectory(prefix="__pxbld__") as build_directory:
-        tranlastion_units = [tu_from_c_source(vars(args)["c-source"], build_directory)]
-        export_config = ExportConfiguration()
+        if args.config:
+            config = load_config(args.config)
+            assert 'export_config' in config
+            assert 'translation_unit' in config
+
+            export_config = ExportConfiguration()
+            assert 'symbols' in config['export_config']
+            for symbol in config['export_config']['symbols']:
+                assert 'python_name' in symbol
+                assert 'symbol_name' in symbol
+                assert 'signature' in symbol
+                export_config.add_symbol(**symbol)
+
+            tranlastion_units = []
+            for tu in config['translation_unit']:
+                assert 'name' in tu
+                if 'source' in tu:
+                    tranlastion_units.append(
+                        TranslationUnit(**tu)
+                    )
+                elif 'path' in tu:
+                    file_type = tu.pop('path').split('.')[-1]
+                    if file_type == 'c':
+                        tranlastion_units.append(
+                            TranslationUnit.from_c_source(tu['path'], **tu)
+                        )
+                    elif file_type == 'pyx':
+                        tranlastion_units.append(
+                            TranslationUnit.from_cython_source(tu['path'], **tu)
+                        )
+                else:
+                    raise ValueError("Invalid file type provided in path")
+        else:
+            tranlastion_units = [tu_from_c_source(vars(args)["c-source"], build_directory)]
+            export_config = ExportConfiguration()
+
         target_description = default_test_config()
         compiler = PIXIECompiler(
             library_name=args.o,
