@@ -27,10 +27,12 @@ class PyModuleDef_Slot(object):
 
 class _OverlayGeneratorBase(IRGenerator):
 
-    def __init__(self, module_name, uuid=None, syms=MappingProxyType({})):
+    def __init__(self, module_name, uuid=None, syms=MappingProxyType({}),
+                 available_isas=()):
         self.module_name = module_name
         self._uuid = uuid
         self._syms = syms
+        self._available_isas = available_isas
         super().__init__()
 
     #: Structure used to describe a method of an extension type.
@@ -149,6 +151,7 @@ class _OverlayGeneratorBase(IRGenerator):
         if (mod_uuid := self._uuid) is None:
             mod_uuid = str(uuid4())
         tmp['__PIXIE__']['uuid'] = mod_uuid
+        tmp['__PIXIE__']['available_isas'] = self._available_isas
         symbol_dict = tmp['__PIXIE__']['symbols']
         for python_name, defs in self._syms.items():
             symbol_dict[python_name] = defaultdict(dict)
@@ -157,8 +160,6 @@ class _OverlayGeneratorBase(IRGenerator):
                 cty_str = pixie_sig.as_ctypes_string()
                 v = overlay.add_variant(ctypes_func_string=cty_str,
                                         raw_symbol=d[0],
-                                        # TODO remove hardcoded feature
-                                        baseline='sse3',
                                         metadata=d[2])
                 symbol_dict[python_name][d[1]] = v
         return tmp
@@ -328,8 +329,9 @@ class AddPixieDictGenerator(_OverlayGeneratorBase):
 
     _DEBUG = False
 
-    def __init__(self, module_name, syms, uuid=None):
-        super().__init__(module_name, uuid=uuid, syms=syms)
+    def __init__(self, module_name, syms, uuid=None, available_isas=()):
+        super().__init__(module_name, uuid=uuid, syms=syms,
+                         available_isas=available_isas)
         self.context = Context()
 
     def _emit_method_array(self, llvm_module):
@@ -459,8 +461,8 @@ class AugmentingPyInitGenerator(_OverlayGeneratorBase):
 
     _DEBUG = False
 
-    def __init__(self, module_name, embedded_libhandle_name):
-        super().__init__(module_name,)
+    def __init__(self, module_name, embedded_libhandle_name, available_isas=()):
+        super().__init__(module_name, available_isas=available_isas)
         self._embedded_libhandle_name = embedded_libhandle_name
         self.context = Context()
 

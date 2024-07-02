@@ -194,8 +194,10 @@ class Signature():
 
         for arg in args:
             iarg_match = _parse_pointer.match(arg)
+            msg = f"Argument '{arg}' is not compliant pointer declaration."
             if iarg_match is None or len(iarg_match.groups()) > 1:
-                msg = f"Argument {arg} is not compliant pointer declaration."
+                raise ValueError(msg)
+            if iarg_match.end() - iarg_match.start() != len(arg):
                 raise ValueError(msg)
             arg_types.append(f'{iarg_match.groups()[0]}*')
 

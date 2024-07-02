@@ -423,10 +423,19 @@ def _pass_manager_builder(opt=2, loop_vectorize=False, slp_vectorize=False,
     return pmb
 
 
-def _module_pass_manager(tm, **kwargs):
+def module_pass_manager(tm, **kwargs):
     pm = llvm.create_module_pass_manager()
     tm.add_analysis_passes(pm)
 
+    with _pass_manager_builder(**kwargs) as pmb:
+        pmb.populate(pm)
+    return pm
+
+
+def function_pass_manager(target_machine, llvm_module, **kwargs):
+    pm = llvm.create_function_pass_manager(llvm_module)
+    pm.add_target_library_info(llvm_module.triple)
+    target_machine.add_analysis_passes(pm)
     with _pass_manager_builder(**kwargs) as pmb:
         pmb.populate(pm)
     return pm

@@ -2,15 +2,19 @@ from collections import defaultdict, namedtuple
 import uuid
 import tempfile
 import os
+import re
 import sys
+import types as pytypes
+import subprocess
+import sysconfig
 
 from llvmlite import ir
 from llvmlite.ir.values import GlobalValue
 from llvmlite import binding as llvm
 from pixie.compiler_lock import compiler_lock
 from pixie.targets.common import Features, TargetDescription
-from pixie.codegen_helpers import (Codegen, Context, _module_pass_manager,
-                                   IRGenerator)
+from pixie.codegen_helpers import (Codegen, Context, IRGenerator,
+                                   module_pass_manager, function_pass_manager)
 from pixie.platform import Toolchain
 from pixie.dso_tools import (ElfMapper, shmEmbeddedDSOHandler,  # noqa: F401
                              mkstempEmbeddedDSOHandler)  # noqa: F401
@@ -33,7 +37,8 @@ class SimpleCompiler():
         self._target_cpu = target_cpu
         self._target_features = target_features
 
-    def compile(self, sources, opt=0):
+    def compile(self, sources, opt=0, loop_vectorize=False,
+                slp_vectorize=False):
         # takes sources, returns object files
         objects = []
         codegen = Codegen(str(uuid.uuid4().hex),
@@ -54,12 +59,28 @@ class SimpleCompiler():
             else:
                 assert 0, f"Unknown source type {type(source)}"
             codelibrary.add_llvm_module(mod)
-            # TODO: wire in loop and slp vectorize
-            mpm = _module_pass_manager(codegen._tm,
-                                       opt=opt,
-                                       loop_vectorize=False,
-                                       slp_vectorize=False)
-            mpm.run(codelibrary._final_module)
+
+            with function_pass_manager(codegen._tm,
+                                       codelibrary._final_module) as fpm:
+                for func in codelibrary._final_module.functions:
+                    fpm.initialize()
+                    fpm.run(func)
+                    fpm.finalize()
+
+            mpm = module_pass_manager(codegen._tm,
+                                      opt=opt,
+                                      loop_vectorize=loop_vectorize,
+                                      slp_vectorize=slp_vectorize)
+
+            remarks_filter = os.environ.get("PIXIE_LLVM_REMARKS_FILTER", "")
+            remarks_file = os.environ.get("PIXIE_LLVM_REMARKS_FILE", None)
+            if remarks_file is not None:
+                (status, remarks) = mpm.run_with_remarks(
+                    codelibrary._final_module, remarks_filter=remarks_filter)
+                with open(remarks_file, 'at') as f:
+                    f.write(remarks)
+            else:
+                mpm.run(codelibrary._final_module)
 
             objects.append(codelibrary.emit_native_object())
             del codelibrary
@@ -97,8 +118,10 @@ class SimpleCompilerDriver():
         self._compiler = SimpleCompiler(target_cpu, target_features)
         self._linker = SimpleLinker()
 
-    def compile_and_link(self, sources, opt=0, outfile='a.out'):
-        objects = self._compiler.compile(sources, opt=opt)
+    def compile_and_link(self, sources, opt=3,
+                         opt_flags=pytypes.MappingProxyType({}),
+                         outfile='a.out'):
+        objects = self._compiler.compile(sources, opt=opt, **opt_flags)
         return self._linker.link(objects, outfile=outfile)
 
 
@@ -123,6 +146,45 @@ class TranslationUnit():
                    f"got {type(source).__name__}.")
             raise TypeError(msg)
 
+    @classmethod
+    def from_c_source(cls, path_to_c_file, name="", extra_flags=()):
+        # Takes a C-language source file at path `path_to_c_file` and produces a
+        # translation unit from it via a call to clang.
+        with tempfile.NamedTemporaryFile(suffix=".ll") as ntf:
+            # NOTE: This needs to be -O1 or great, -O0 adds `optnone` to
+            # function attributes which then prevents optimisation by the PIXIE
+            # toolchain.
+            cmd = ('clang', '-x', 'c', '-O1',
+                   '-I', sysconfig.get_path("include"),
+                   '-fPIC', '-mcmodel=small',
+                   *extra_flags,
+                   '-emit-llvm', path_to_c_file, '-o', ntf.name, '-S')
+            try:
+                subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+            except subprocess.CalledProcessError as err:
+                # print here, in case another exception interrupts the handling
+                # of this one and the output is masked.
+                print(err.stdout.decode())
+                raise err
+
+            ntf.flush()
+            with open(ntf.name, 'rt') as f:
+                data = f.read()
+        _name = name or path_to_c_file
+        return TranslationUnit(_name, data)
+
+    @classmethod
+    def from_cython_source(cls, path_to_cython_file, name="",
+                           extra_clang_flags=(), extra_cython_flags=()):
+        # convert cython to C, then pass that to `from_c_source`.
+        with tempfile.NamedTemporaryFile(suffix='.c') as ntf:
+            cmd = ('cython', '-3', *extra_cython_flags, path_to_cython_file,
+                   '-o', ntf.name)
+            subprocess.check_output(cmd)
+            _name = name or path_to_cython_file
+            return TranslationUnit.from_c_source(ntf.name, _name,
+                                                 extra_flags=extra_clang_flags)
+
 
 class ExportConfiguration():
 
@@ -146,6 +208,7 @@ class PIXIECompiler():
                  python_cext=True,
                  uuid=None,
                  opt=3,
+                 opt_flags=pytypes.MappingProxyType({}),
                  output_dir='.'):
         self._library_name = library_name
         self._translation_units = translation_units
@@ -153,6 +216,7 @@ class PIXIECompiler():
         self._python_cext = python_cext
         self._uuid = uuid
         self._opt = opt
+        self._opt_flags = opt_flags
         self._output_dir = output_dir
 
         if not isinstance(library_name, str):
@@ -207,6 +271,19 @@ class PIXIECompiler():
                    f"{opt}")
             raise ValueError(msg)
 
+        if not isinstance(opt_flags, (pytypes.MappingProxyType, dict)):
+            msg = ("kwarg opt_flags must be a dictionary")
+            raise TypeError(msg)
+
+        for k, v in opt_flags.items():
+            if k not in ("slp_vectorize", "loop_vectorize"):
+                msg = f"kwarg opt_flags contains an invalid key: {k}"
+                raise ValueError(msg)
+            if not isinstance(v, bool):
+                msg = (f"kwarg opt_flags key '{k}' has an invalid value type "
+                       f"'{type(v).__name__}' (expected bool).")
+                raise TypeError(msg)
+
         if not isinstance(output_dir, (str, bytes, os.PathLike)):
             msg = ("kwarg output_dir should be a string, bytes or os.PathLike, "
                    f"got {type(output_dir).__name__}")
@@ -227,6 +304,7 @@ class PIXIECompiler():
                                 self._export_configuration,
                                 self._target_descr,
                                 opt=self._opt,
+                                opt_flags=self._opt_flags,
                                 uuid=self._uuid)
         # always set the bitcode to be emitted
         # set the wiring method based on platform
@@ -241,17 +319,19 @@ class PIXIECompiler():
         output_file = compiler._linker._toolchain.get_ext_filename(
             self._library_name)
         outpath = os.path.join(self._output_dir, output_file)
-        compiler.compile_and_link(str(ir_mod), opt=self._opt, outfile=outpath)
+        compiler.compile_and_link(str(ir_mod), opt=self._opt,
+                                  opt_flags=self._opt_flags, outfile=outpath)
 
 
 class PIXIEModule(IRGenerator):
 
     def __init__(self, library_name, translation_units, export_configuration,
-                 target_descr, opt, uuid=None):
+                 target_descr, opt, opt_flags, uuid=None):
         self._library_name = library_name
         self._target_descr = target_descr
-        self._uuid = uuid
         self._opt = opt
+        self._opt_flags = opt_flags
+        self._uuid = uuid
 
         # convert translation units to a single module
         llvm_irs = [x._source for x in translation_units
@@ -259,6 +339,45 @@ class PIXIEModule(IRGenerator):
         llvm_bcs = [x._source for x in translation_units
                     if isinstance(x._source, bytes)]
         self._user_source = {'llvm_ir': llvm_irs, 'llvm_bc': llvm_bcs}
+
+        def filter_features(insrc):
+            # the LLVM input source may have "target-cpu", "target-features" or
+            # "tune-cpu" attributes present on things like functions. These need
+            # to be removed as they influence the compilation and seem to
+            # override features supplied as flags. Without doing this, it might
+            # be possible to compile some C code with clang on a host machine
+            # with AVX512F, and then those features impact the instructions in
+            # the final binary, which is a SIGILL waiting to happen if the
+            # target features were specified as e.g. SSE4.2.
+            #
+            # For reference, attributes look like:
+            # attributes #18 = { "target-cpu"="x86-64" "target-features"="+sse,+x87" } # noqa: E501
+            # it's a space separated string with a mixure of single arguments
+            # and kwarg pairs of form "key"="comma-separated-values".
+            if '"target-' in insrc:
+                re_attrs = re.compile(r'(.*){(.*)}')
+                buf = []
+                for line in insrc.splitlines():
+                    if (line.lstrip().startswith("attributes") and
+                            '"target-' in line):
+                        attrs = re_attrs.match(line).groups()[1]
+                        new_attrs = []
+                        for attr in attrs.split(' '):
+                            if "target-features" in attr:
+                                continue
+                            if "target-cpu" in attr:
+                                continue
+                            if "tune-cpu" in attr:
+                                continue
+                            new_attrs.append(attr)
+                        attr_idx = re_attrs.match(line).groups()[0]
+                        new_line = attr_idx + "{" + ' '.join(new_attrs) + "}"
+                        buf.append(new_line)
+                    else:
+                        buf.append(line)
+                return "\n".join(buf)
+            else:
+                return insrc
 
         def _combine_sources():
             # don't create a new module for single source, this matters,
@@ -269,33 +388,49 @@ class PIXIEModule(IRGenerator):
             if (len(self._user_source['llvm_ir']) == 1 and
                     len(self._user_source['llvm_bc']) == 0):
                 llvm_ir = self._user_source['llvm_ir'][0]
-                self._single_mod = llvm.parse_assembly(llvm_ir)
+                # filter
+                filtered_llvm_ir = filter_features(llvm_ir)
+                self._single_mod = llvm.parse_assembly(filtered_llvm_ir)
                 self._single_source = str(self._single_mod)
                 self._single_bitcode = self._single_mod.as_bitcode()
-            if (len(self._user_source['llvm_ir']) == 0 and
+                return
+            elif (len(self._user_source['llvm_ir']) == 0 and
                     len(self._user_source['llvm_bc']) == 1):
                 bc = self._user_source['llvm_bc'][0]
-                self._single_mod = llvm.parse_bitcode(bc)
-                self._single_source = str(self._single_mod)
-                self._single_bitcode = bc
+                llvm_ir = str(llvm.parse_bitcode(bc))
+                filtered_llvm_ir = filter_features(llvm_ir)
+                if filtered_llvm_ir == llvm_ir:
+                    # nothing to filter, so can just wire stuff in, this
+                    # satisfies the necessary conditions for respecialization.
+                    self._single_mod = llvm.parse_bitcode(bc)
+                    self._single_source = str(self._single_mod)
+                    self._single_bitcode = bc
+                else:
+                    self._single_mod = llvm.parse_assembly(filtered_llvm_ir)
+                    self._single_source = str(self._single_mod)
+                    self._single_bitcode = self._single_mod.as_bitcode()
                 return
+            else:
+                tmp_mod = ir.Module("tmp")
+                # TODO: fix for x-compile
+                tmp_mod.triple = llvm.get_process_triple()
+                ir_module = llvm.parse_assembly(str(tmp_mod))
 
-            tmp_mod = ir.Module("tmp")
-            # TODO: fix for x-compile
-            tmp_mod.triple = llvm.get_process_triple()
-            ir_module = llvm.parse_assembly(str(tmp_mod))
-            mods = []
-            for src in self._user_source['llvm_ir']:
-                mods.append(llvm.parse_assembly(src))
-            for src in self._user_source['llvm_bc']:
-                mods.append(llvm.parse_bitcode(src))
-            # link into main module
-            for mod in mods:
-                ir_module.link_in(mod)
+                mods = []
+                for src in self._user_source['llvm_bc']:
+                    # bitcode has to go through string form to be filtered
+                    tmp = filter_features(str(llvm.parse_bitcode(src)))
+                    mods.append(llvm.parse_assembly(tmp))
+                for src in self._user_source['llvm_ir']:
+                    mods.append(llvm.parse_assembly(filter_features(src)))
 
-            self._single_mod = ir_module
-            self._single_source = str(self._single_mod)
-            self._single_bitcode = self._single_mod.as_bitcode()
+                # link into main module
+                for mod in mods:
+                    ir_module.link_in(mod)
+
+                self._single_mod = ir_module
+                self._single_source = str(self._single_mod)
+                self._single_bitcode = self._single_mod.as_bitcode()
 
         _combine_sources()
 
@@ -321,6 +456,7 @@ class PIXIEModule(IRGenerator):
             with tempfile.TemporaryDirectory() as build_dir:
                 outfile = os.path.join(build_dir, str(uuid.uuid4().hex))
                 compiler.compile_and_link(self._single_source, opt=self._opt,
+                                          opt_flags=self._opt_flags,
                                           outfile=outfile)
                 with open(outfile, 'rb') as f:
                     binaries[str(max(features))] = f.read()
@@ -489,7 +625,7 @@ class PIXIEModule(IRGenerator):
         fn_builder.ret(bitcode_const_bytes)
 
         fnty = ir.FunctionType(lt._int64, [])
-        get_sz_name = 'get_bitcode_for_self_size'
+        get_sz_name = 'get_sizeof_bitcode_for_self'
         fn = ir.Function(mod, fnty, get_sz_name)
         bb = fn.append_basic_block()
         fn_builder = ir.IRBuilder(bb)
@@ -531,17 +667,20 @@ class PIXIEModule(IRGenerator):
                         return True
                 return False
 
+            have_isas = tuple(binaries.keys())
             if augment_existing():
                 # Write a new PyInit which calls up the existing one and then
                 # shoves the PIXIE dictionary into it
                 # TODO: handle case where multiple PyInit_ exist in the same
                 # source.
                 gen = AugmentingPyInitGenerator(self._library_name,
-                                                emap._embedded_libhandle_name)
+                                                emap._embedded_libhandle_name,
+                                                available_isas=have_isas)
             else:
                 gen = AddPixieDictGenerator(self._library_name,
                                             self._exported_symbols,
-                                            uuid=self._uuid)
+                                            uuid=self._uuid,
+                                            available_isas=have_isas)
             gen.generate_ir(mod)
 
         return mod

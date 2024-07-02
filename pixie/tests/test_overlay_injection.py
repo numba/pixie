@@ -1,8 +1,5 @@
 from pixie import PIXIECompiler, TranslationUnit, ExportConfiguration
 from pixie.tests.support import PixieTestCase, needs_clang
-import os
-import subprocess
-import sysconfig
 import tempfile
 import unittest
 
@@ -16,19 +13,6 @@ class TestOverlayInjection(PixieTestCase):
     @classmethod
     def setUpClass(cls):
         PixieTestCase.setUpClass()
-
-        def tu_from_c_source(fname):
-            prefix = 'pixie-c-build-'
-            with tempfile.TemporaryDirectory(prefix=prefix) as build_dir:
-                outfile = os.path.join(build_dir, 'tmp.bc')
-                cmd = ('clang', '-x', 'c++',
-                       '-I', sysconfig.get_path("include"),
-                       '-fPIC', '-mcmodel=small',
-                       '-emit-llvm', fname, '-o', outfile, '-c')
-                subprocess.run(cmd)
-                with open(outfile, 'rb') as f:
-                    data = f.read()
-            return TranslationUnit(fname, data)
 
         src1 = """
         #include <Python.h>
@@ -90,7 +74,7 @@ class TestOverlayInjection(PixieTestCase):
             with tempfile.NamedTemporaryFile('wt') as ntf:
                 ntf.write(src)
                 ntf.flush()
-                tus.append(tu_from_c_source(ntf.name))
+                tus.append(TranslationUnit.from_c_source(ntf.name))
 
             export_config = ExportConfiguration()
 

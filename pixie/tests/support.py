@@ -67,8 +67,8 @@ class PixieTestCase(TestCase):
         pi1 = pixielib1.__PIXIE__
         pi2 = pixielib2.__PIXIE__
 
-        required_identical = ('bitcode', 'c_header', 'linkage', 'uuid')
-        relaxed_identical = ('is_specialized',)
+        required_identical = ('bitcode', 'c_header', 'linkage', 'uuid',)
+        relaxed_identical = ('is_specialized', 'available_isas')
 
         if strict:
             fields = required_identical + relaxed_identical
@@ -93,8 +93,6 @@ class PixieTestCase(TestCase):
                       'source_file',
                       # 'address', # runtime defined
                       # 'cfunc',  # runtime defined
-                      'feature_variants',
-                      'baseline_feature',
                       # 'metadata', # could be anything
                       )
             for field in fields:

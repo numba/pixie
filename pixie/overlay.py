@@ -12,7 +12,7 @@ def address_of_symbol(DSO, symbol_name):
 
 
 def get_bitcode(DSO):
-    sz_name = "get_bitcode_for_self_size"
+    sz_name = "get_sizeof_bitcode_for_self"
     data_name = "get_bitcode_for_self"
     sz_fptr = getattr(DSO, sz_name)
     sz_fptr.argtypes = ()
@@ -146,17 +146,7 @@ def main(PIXIE_payload, obj):
             raw_address = ctypes.cast(ct_fptr, ctypes.c_void_p).value
             data['address'] = raw_address
             data['cfunc'] = ctbinding(ct_fptr)
-            tmp = dict()
-            variants = data['feature_variants']
-            # on each variant, find the address in memory and bind a cfunc
-            for variant, symbol in variants.items():
-                vdict = dict()
-                vdict['symbol'] = symbol
-                address = fns["address_of_symbol"](DSO, symbol)
-                vdict['address'] = address
-                vdict['cfunc'] = ctbinding(address)
-                tmp[variant] = vdict
-            data['feature_variants'] = tmp
+
     pixie_dict_raw['bitcode'] = fns["get_bitcode"](DSO)
     pixie_dict_raw['specialize'] = fns["specialize"](obj)
     pixie_dict_raw['selected_isa'] = fns["selected_isa"](DSO)
@@ -165,11 +155,8 @@ def main(PIXIE_payload, obj):
     obj.__PIXIE__ = pixie_dict_raw
 
 
-def add_variant(ctypes_func_string, raw_symbol, baseline,
-                feature_variants=None, module=None, source_file=None,
+def add_variant(ctypes_func_string, raw_symbol, module=None, source_file=None,
                 metadata=None):
-    _feature_variants = feature_variants if feature_variants is not None\
-        else {}
     d = dict()
     d['ctypes_cfunctype'] = ctypes_func_string
     d['symbol'] = raw_symbol
@@ -177,8 +164,6 @@ def add_variant(ctypes_func_string, raw_symbol, baseline,
     d['source_file'] = source_file
     d['address'] = None
     d['cfunc'] = None
-    d['feature_variants'] = _feature_variants
-    d['baseline_feature'] = baseline
     d['metadata'] = metadata
     return d
 
