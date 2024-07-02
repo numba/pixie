@@ -3,6 +3,8 @@ import uuid
 import tempfile
 import os
 import sys
+import subprocess
+import sysconfig
 
 from llvmlite import ir
 from llvmlite.ir.values import GlobalValue
@@ -122,6 +124,45 @@ class TranslationUnit():
             msg = ("Expected string or bytes for source, "
                    f"got {type(source).__name__}.")
             raise TypeError(msg)
+
+    @classmethod
+    def from_c_source(cls, path_to_c_file, name="", extra_flags=()):
+        # Takes a C-language source file at path `path_to_c_file` and produces a
+        # translation unit from it via a call to clang.
+        with tempfile.NamedTemporaryFile(suffix=".ll") as ntf:
+            # NOTE: This needs to be -O1 or great, -O0 adds `optnone` to
+            # function attributes which then prevents optimisation by the PIXIE
+            # toolchain.
+            cmd = ('clang', '-x', 'c', '-O1',
+                   '-I', sysconfig.get_path("include"),
+                   '-fPIC', '-mcmodel=small',
+                   *extra_flags,
+                   '-emit-llvm', path_to_c_file, '-o', ntf.name, '-S')
+            try:
+                subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+            except subprocess.CalledProcessError as err:
+                # print here, in case another exception interrupts the handling
+                # of this one and the output is masked.
+                print(err.stdout.decode())
+                raise err
+
+            ntf.flush()
+            with open(ntf.name, 'rt') as f:
+                data = f.read()
+        _name = name or path_to_c_file
+        return TranslationUnit(_name, data)
+
+    @classmethod
+    def from_cython_source(cls, path_to_cython_file, name="",
+                           extra_clang_flags=(), extra_cython_flags=()):
+        # convert cython to C, then pass that to `from_c_source`.
+        with tempfile.NamedTemporaryFile(suffix='.c') as ntf:
+            cmd = ('cython', '-3', *extra_cython_flags, path_to_cython_file,
+                   '-o', ntf.name)
+            subprocess.check_output(cmd)
+            _name = name or path_to_cython_file
+            return TranslationUnit.from_c_source(ntf.name, _name,
+                                                 extra_flags=extra_clang_flags)
 
 
 class ExportConfiguration():
