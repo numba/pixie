@@ -7,6 +7,16 @@
 Welcome to pixie's documentation!
 =================================
 
+Pixie creates performance portable libraries with embedded source 
+representations. Features include:
+
+- ISA-based dispatcher
+- Embedded LLVM bitcode for *link time optimization* by JIT compilers
+- Support for x86-64 Linux and arm64 MacOS.
+
+
+.. TBD better description
+
 .. toctree::
    :maxdepth: 2
    :caption: Contents:

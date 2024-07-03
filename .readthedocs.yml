@@ -11,6 +11,7 @@ build:
   jobs:
     pre_install:
     - "python -m pip install -vv --no-deps --no-build-isolation ."
+    - "python -m pip install myst-nb sphinx_rtd_theme"
 
 sphinx:
   configuration: docs/source/conf.py
