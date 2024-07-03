@@ -14,6 +14,12 @@ RUN git clone https://github.com/numba/numba.git /root/git/numba
 
 RUN conda init && source /root/.bashrc && conda activate scipy24 && cd /root/git/pixie && python -m pip install --no-deps --no-index --no-build-isolation -vv -e .
 
+RUN cd /root/git/numba && git apply /root/git/pixie/scipy2024/numba_bootstrap.patch
+
+COPY ["/root/git/pixie/scipy2024/*", "."]
+
+RUN conda init && source /root/.bashrc && conda activate scipy24 && python bootstrap.py /root/git/numba
+
 RUN echo "conda activate scipy24" >> /root/.bashrc
 
 ENTRYPOINT ["/bin/bash"]
