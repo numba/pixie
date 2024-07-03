@@ -31,6 +31,7 @@ jobs:
           auto-activate-base: false
       - name: Install dependencies
         shell: bash -l {0}
+        run: |
           conda install python=3.12 pytest coverage numpy numba flake8 conda-build clangxx=14 numba/label/dev::llvmlite setuptools_scm cython pytest-cov pyyaml
       - name : Display packages and system info
         shell: bash -l {0}
