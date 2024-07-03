@@ -12,8 +12,8 @@ RUN git clone https://github.com/numba/pixie.git /root/git/pixie
 
 RUN git clone https://github.com/numba/numba.git /root/git/numba
 
-RUN cd /root/git/pixie && python -m pip install --no-deps --no-index --no-build-isolation -vv -e .
+RUN conda init && source /root/.bashrc && conda activate scipy24 && cd /root/git/pixie && python -m pip install --no-deps --no-index --no-build-isolation -vv -e .
 
-RUN   echo "conda activate scipy24" >> /root/.bashrc
+RUN echo "conda activate scipy24" >> /root/.bashrc
 
 ENTRYPOINT ["/bin/bash"]
