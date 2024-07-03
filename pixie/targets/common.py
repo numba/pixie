@@ -12,7 +12,7 @@ from llvmlite import binding as llvm
 class CPUEnum(Enum):
 
     def __str__(self):
-        return f'{self.name}'
+        return f'{self.name}'.replace('_', '-')
 
 
 class FeaturesEnum(IntEnum):
@@ -290,7 +290,7 @@ class TargetDescription():
 
     def _validate_target(self, target_triple, baseline_cpu, baseline_features,
                          targets_features):
-        self.target_triple = llvm.get_triple_parts(target_triple)
+        self.target_triple = _get_triple_parts(target_triple)
         arch_mod = f"pixie.targets.{self.target_triple.Arch}"
         self.arch = importlib.import_module(arch_mod)
 
@@ -332,7 +332,14 @@ def get_default_configuration(triple=None):
     else:
         _triple = triple
 
-    target_triple = llvm.get_triple_parts(_triple)
+    target_triple = _get_triple_parts(_triple)
     arch_mod_name = f"pixie.targets.{target_triple.Arch}"
     arch_mod = importlib.import_module(arch_mod_name)
     return arch_mod.default_configuration
+
+
+def _get_triple_parts(triple_str):
+    parts = llvm.get_triple_parts(triple_str)
+    if parts.Arch == 'aarch64' and  parts.Vendor == 'apple':
+       return parts._replace(Arch='arm64')
+    return parts
