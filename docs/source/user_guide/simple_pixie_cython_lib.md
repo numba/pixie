@@ -16,7 +16,7 @@ kernelspec:
 
 This notebook is building upon knowledge of [Compiling a PIXIE library from C](./simple_pixie_c_lib.md)
 
-This notebook requires a working clang 14 compiler and cython. You can install it with `conda install clang=14 cython`.
+This notebook requires a working clang 14 compiler and cython. You can install them with `conda install clang=14 cython`.
 
 +++
 

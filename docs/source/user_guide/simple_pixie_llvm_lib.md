@@ -15,7 +15,7 @@ kernelspec:
 # Compiling a PIXIE library from LLVM
 
 This notebook is building upon knowledge of [Compiling a PIXIE library from C](./simple_pixie_c_lib.md)
-and show how to build a PIXIE library from LLVM-IR.
+and shows how to build a PIXIE library from LLVM-IR.
 
 PIXIE can directly ingest LLVM-IR such that any LLVM-emitting compiler frontend 
 can build PIXIE libraries.
@@ -73,7 +73,7 @@ export_config.add_symbol(python_name='add',
 export_config.add_symbol(python_name='add',
                          symbol_name='add_f32',
                          signature='void(float*, float*, float*)',)
-compiler = PIXIECompiler(library_name='simple_add_llvm', # name must match cython file
+compiler = PIXIECompiler(library_name='simple_add_llvm',
                          translation_units=tus,
                          export_configuration=export_config,
                          **get_default_configuration(),
