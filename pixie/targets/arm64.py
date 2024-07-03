@@ -234,7 +234,10 @@ class arm64CPUSelector(Selector):
         bb_default = builder.append_basic_block()
         swt = builder.switch(cpu_sel, bb_default)
         with builder.goto_block(bb_default):
-            self.debug_print(builder, '[selector] unknown cpu\n')
+            message = "CPU detection returned invalid result cpu_sel=%d\n"
+            error_message = self._ctx.insert_const_string(
+                builder.module, message)
+            c.stdio.printf(builder, error_message, cpu_sel)
             # call sigabrt.
             self.debug_print(builder, "calling exit\n")
             c.stdlib.exit(builder, c.sysexits.EX_SOFTWARE)
