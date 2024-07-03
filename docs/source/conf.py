@@ -9,7 +9,7 @@ import sys
 import os
 
 sys.path.insert(0, os.path.abspath(os.path.join("..", "..")))
-from pixie import __version__
+from pixie import __version__  # noqa: E402
 
 project = 'pixie'
 copyright = '2024, Numba Developers'
