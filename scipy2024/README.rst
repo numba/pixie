@@ -101,7 +101,7 @@ Running the demos:
 
       $ python pixie_compile_blas_kernels.py
 
-   to build an ``blas_kernels`` extension module from the
+   to build a ``blas_kernels`` extension module from the
    ``blas_kernels.pyx`` Cython source. Run::
 
 
