@@ -37,6 +37,7 @@ test:
     - numba
     - clangxx 14.*
     - cython
+    - pyyaml
   commands:
     - pytest --pyargs pixie
 

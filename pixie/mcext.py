@@ -33,15 +33,15 @@ langref.types.i64 = ir.IntType(64)
 c = SimpleNamespace()
 # need to declare this early as other things rely on it
 _va_list_ty_struct = ir.LiteralStructType([langref.types.i32,
-                                    langref.types.i32,
-                                    langref.types.i8.as_pointer(),
-                                    langref.types.i8.as_pointer()])
+                                           langref.types.i32,
+                                           langref.types.i8.as_pointer(),
+                                           langref.types.i8.as_pointer()])
 _va_list_ty_i8 = langref.types.i8.as_pointer()
 
-#TODO: fix for x-compile
+# TODO: fix for x-compile
 VA_LIST_IS_I8PTR = not platform.machine().startswith("x86")
 
-_va_list_ty =  (_va_list_ty_i8 if VA_LIST_IS_I8PTR else _va_list_ty_struct)
+_va_list_ty = (_va_list_ty_i8 if VA_LIST_IS_I8PTR else _va_list_ty_struct)
 
 c.stdarg = SimpleNamespace(va_list=_va_list_ty)
 
@@ -321,7 +321,6 @@ def _printf(builder, _fmt, *varargs):
                                        (_fmt.type,
                                         inner_args.type))
         c_fn = get_or_insert_function(builder.module, vprintf_fnty, "vprintf")
-
 
         local_builder.call(c_fn, (fn.args[0], inner_args))
 

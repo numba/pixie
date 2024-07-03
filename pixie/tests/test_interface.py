@@ -112,6 +112,37 @@ class TestCompilerInterface(PixieTestCase):
                           baseline_features=self.cfg.baseline_target.features,
                           opt=4,)
 
+    def test_invalid_opt_flags_type(self):
+        expected = "kwarg opt_flags must be a dictionary"
+        with self.assertRaisesRegex(TypeError, expected):
+            PIXIECompiler(library_name="lib",
+                          translation_units=self.tus,
+                          baseline_cpu=self.cfg.baseline_target.cpu,
+                          baseline_features=self.cfg.baseline_target.features,
+                          opt=2,
+                          opt_flags="invalid")
+
+    def test_invalid_opt_flags_invalid_key_value(self):
+        expected = "kwarg opt_flags contains an invalid key: invalid"
+        with self.assertRaisesRegex(ValueError, expected):
+            PIXIECompiler(library_name="lib",
+                          translation_units=self.tus,
+                          baseline_cpu=self.cfg.baseline_target.cpu,
+                          baseline_features=self.cfg.baseline_target.features,
+                          opt=2,
+                          opt_flags={"invalid": False})
+
+    def test_invalid_opt_flags_invalid_value_type(self):
+        expected = ("kwarg opt_flags key 'slp_vectorize' has an invalid "
+                    r"value type 'str' \(expected bool\).")
+        with self.assertRaisesRegex(TypeError, expected):
+            PIXIECompiler(library_name="lib",
+                          translation_units=self.tus,
+                          baseline_cpu=self.cfg.baseline_target.cpu,
+                          baseline_features=self.cfg.baseline_target.features,
+                          opt=2,
+                          opt_flags={"slp_vectorize": "invalid"})
+
     def test_invalid_output_dir_value(self):
         expected = ("kwarg output_dir should be a string, bytes or "
                     "os.PathLike, got list")

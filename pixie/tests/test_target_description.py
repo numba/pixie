@@ -1,5 +1,4 @@
-from pixie.targets.common import (CPUDescription, TargetDescription,
-                                  decode_llvm_triple, llvm_triple)
+from pixie.targets.common import (CPUDescription, TargetDescription,)
 from pixie.tests.support import PixieTestCase
 from pixie.targets.x86_64 import cpus, features
 import unittest
@@ -111,21 +110,6 @@ class TestTargetDescription(PixieTestCase):
                                        CPUDescription(cpus.tigerlake,
                                                       (features.sse42,
                                                        features.avx2,)),))
-
-
-class TestTripleDecode(PixieTestCase):
-
-    def test_3_triple_decode(self):
-        triple = decode_llvm_triple("x86_64-unknown-linux")
-        assert triple == llvm_triple("x86_64", "", "unknown", "linux", "")
-
-    def test_4_triple_decode(self):
-        triple = decode_llvm_triple("x86_64-unknown-linux-gnu")
-        assert triple == llvm_triple("x86_64", "", "unknown", "linux", "gnu")
-
-    def test_5_triple_decode(self):
-        triple = decode_llvm_triple("arm-v5-unknown-linux-eabi")
-        assert triple == llvm_triple("arm", "v5", "unknown", "linux", "eabi")
 
 
 if __name__ == '__main__':

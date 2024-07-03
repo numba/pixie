@@ -1,11 +1,12 @@
-from pixie import PIXIECompiler, TranslationUnit, ExportConfiguration
-from pixie.tests.support import PixieTestCase, needs_clang
 import ctypes
-import os
 import numpy as np
-import subprocess
+import re
 import tempfile
 import unittest
+
+from pixie import PIXIECompiler, TranslationUnit, ExportConfiguration
+from pixie.tests.support import PixieTestCase, needs_clang
+from llvmlite import binding as llvm
 
 
 @needs_clang
@@ -16,17 +17,6 @@ class TestCCompiler(PixieTestCase):
     @classmethod
     def setUpClass(cls):
         PixieTestCase.setUpClass()
-
-        def tu_from_c_source(fname):
-            prefix = 'pixie-c-build-'
-            with tempfile.TemporaryDirectory(prefix=prefix) as build_dir:
-                outfile = os.path.join(build_dir, 'tmp.bc')
-                cmd = ('clang', '-x', 'c', '-fPIC', '-mcmodel=small',
-                       '-emit-llvm', fname, '-o', outfile, '-c')
-                subprocess.run(cmd)
-                with open(outfile, 'rb') as f:
-                    data = f.read()
-            return TranslationUnit(fname, data)
 
         # C language source for a function f = cos(x) + 1 and its derivative
         # dfdx = -sin(x)
@@ -56,11 +46,16 @@ class TestCCompiler(PixieTestCase):
         """
 
         tus = []
-        for source in (src1, src2, src3):
+        for source, debug in ((src1, True), (src2, False), (src3, True)):
             with tempfile.NamedTemporaryFile('wt') as ntf:
                 ntf.write(source)
                 ntf.flush()
-                tus.append(tu_from_c_source(ntf.name))
+                if debug:
+                    clang_flags = ("-g",)
+                else:
+                    clang_flags = ()
+                tus.append(TranslationUnit.from_c_source(
+                    ntf.name, extra_flags=clang_flags))
 
         export_config = ExportConfiguration()
         # NOTE: bar is not exported, this is to allow checking the exports in
@@ -124,6 +119,21 @@ class TestCCompiler(PixieTestCase):
             assert call(f_func) == 2.0
             assert call(dfdx_func) == -0.0
             assert call(bar_func) == 123.45
+
+    def test_check_debuginfo(self):
+        with self.load_pixie_module('objective_functions') as foo_library:
+            # check bitcode for debug info
+            mod = llvm.parse_bitcode(foo_library.__PIXIE__['bitcode'])
+            llvm_ir = str(mod)
+            # expect 2 DISubprograms, one for "f" and one for "bar", but not
+            # one for dfdx.
+            functions = set()
+            matcher = re.compile(r".*name:\s+\"(.*)\",.*")
+            for line in llvm_ir.splitlines():
+                if "!DISubprogram" in line:
+                    functions.add(matcher.match(line).groups()[0])
+
+            assert functions == {"f", "bar"}
 
 
 if __name__ == '__main__':

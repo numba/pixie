@@ -89,11 +89,11 @@ class cpu_family_features(Enum):
     APPLE_M2 = _cd.v8_6a | _cd.sha3 | _cd.bf16
 
 
-_apple_m1 = CPUDescription(cpus.generic, (features.v8_4a,
-                                          features.sha3,))
-_apple_m2 = CPUDescription(cpus.generic, (features.v8_6a,
-                                          features.sha3,
-                                          features.bf16,))
+_apple_m1 = CPUDescription(cpus.apple_m1, (features.v8_4a,
+                                           features.sha3,))
+_apple_m2 = CPUDescription(cpus.apple_m1, (features.v8_6a,
+                                           features.sha3,
+                                           features.bf16,))
 
 # a set of predefined targets
 predefined = SimpleNamespace(
