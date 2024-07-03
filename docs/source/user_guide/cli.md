@@ -6,36 +6,36 @@ PIXIE provides a CLI for building PIXIE libraries.
 ## `pixie-cc` 
 
 ```text
-usage: pixie-cc [-h] [-g] [-v] [-o <lib>] [-O <n>] c-source
+usage: pixie-cc [-h] [-g] [-v] [-O <n>] [-o <lib>] files [files ...]
 
 pixie-cc
 
 positional arguments:
-  c-source    input source file
+  files       input source files
 
 options:
   -h, --help  show this help message and exit
-  -g          enable debug info
-  -v          enable verbose
-  -o <lib>    output library
+  -g          compile with debug info
+  -v          enable verbose output
   -O <n>      optimization level
+  -o <lib>    output library
 ```
 
 ## `pixie-cython` 
 
 
 ```text
-usage: pixie-cythonize [-h] [-g] [-v] [-o <lib>] [-O <n>] pyx-source
+usage: pixie-cythonize [-h] [-g] [-v] [-O <n>] [-o <lib>] files [files ...]
 
 pixie-cythonize
 
 positional arguments:
-  pyx-source  input source file
+  files       input source files
 
 options:
   -h, --help  show this help message and exit
-  -g          enable debug info
-  -v          enable verbose
-  -o <lib>    output library
+  -g          compile with debug info
+  -v          enable verbose output
   -O <n>      optimization level
+  -o <lib>    output library
 ```

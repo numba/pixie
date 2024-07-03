@@ -273,7 +273,6 @@ Here's a C program that references `add_f64` in a loop:
 void add_f64(double *x, double *y, double *out);
 
 void loop_add_f64(double *x, double *y, double *out, int size) {
-    if (out != x && out != y) return;
     for (int i=0; i<size; ++i)
         add_f64(x, y, out);
 }
