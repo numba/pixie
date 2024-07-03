@@ -340,6 +340,6 @@ def get_default_configuration(triple=None):
 
 def _get_triple_parts(triple_str):
     parts = llvm.get_triple_parts(triple_str)
-    if parts.Arch == 'aarch64' and  parts.Vendor == 'apple':
-       return parts._replace(Arch='arm64')
+    if parts.Arch == 'aarch64' and parts.Vendor == 'apple':
+        return parts._replace(Arch='arm64')
     return parts
