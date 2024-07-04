@@ -646,7 +646,7 @@ class PIXIEModule(IRGenerator):
         # create_dso_ctor.
         emap.create_dso_dtor(dso_handler)
 
-        if True: #wiring == "trampoline":  #  noqa: E261, E262
+        if True:
             self.create_fake_ifuncs(mod, emap._embedded_libhandle_name,
                                     python_cext)
         elif wiring == "ifunc":
