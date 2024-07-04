@@ -48,7 +48,7 @@ jobs:
       - name: Run pytest and print coverage Report
         shell: bash -l {0}
         run: |
-          pytest --cov=pixie --pyargs pixie
+          pytest --verbose --cov=pixie --pyargs pixie
       - name: Run pixie scripts, make sure they show the help screen
         shell: bash -l {0}
         run: |
