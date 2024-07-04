@@ -97,7 +97,7 @@ jobs:
         shell: bash -l {0}
         run: |
           export CONDA_BUILD_SYSROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk
-          pytest --cov=pixie --pyargs pixie
+          pytest --verbose --cov=pixie --pyargs pixie
       - name: Run conda-build
         shell: bash -l {0}
         run: |
