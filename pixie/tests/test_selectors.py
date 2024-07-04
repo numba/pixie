@@ -1,10 +1,6 @@
 from pixie.targets import x86_64, arm64
 from pixie.targets.common import Features
-from pixie.dso_tools import (
-    ElfMapper,
-    shmEmbeddedDSOHandler,
-    mkstempEmbeddedDSOHandler,
-)
+from pixie.dso_tools import ElfMapper, mkstempEmbeddedDSOHandler
 from pixie.mcext import c
 from pixie.selectors import PyVersionSelector
 from pixie.targets.x86_64 import x86CPUSelector
@@ -107,7 +103,7 @@ class TestSelectors(PixieTestCase):
         expected, dispatch_data = self.gen_dispatch_and_expected(dispatch_keys)
 
         selector_class = x86CPUSelector
-        dso_handler = shmEmbeddedDSOHandler()
+        dso_handler = mkstempEmbeddedDSOHandler()
         llvm_ir = self.gen_mod(dispatch_data, selector_class, dso_handler)
 
         # Compile into DSO

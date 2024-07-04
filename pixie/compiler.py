@@ -16,8 +16,7 @@ from pixie.targets.common import Features, TargetDescription
 from pixie.codegen_helpers import (Codegen, Context, IRGenerator,
                                    module_pass_manager, function_pass_manager)
 from pixie.platform import Toolchain
-from pixie.dso_tools import (ElfMapper, shmEmbeddedDSOHandler,  # noqa: F401
-                             mkstempEmbeddedDSOHandler)  # noqa: F401
+from pixie.dso_tools import ElfMapper, mkstempEmbeddedDSOHandler
 from pixie.mcext import c
 from pixie.overlay_injectors import (AddPixieDictGenerator,
                                      AugmentingPyInitGenerator)
@@ -26,9 +25,8 @@ from pixie import llvm_types as lt
 
 IS_LINUX = sys.platform.startswith('linux')
 
-# TODO: fix for x-compile
-defaultDSOHandler = (shmEmbeddedDSOHandler if IS_LINUX
-                     else mkstempEmbeddedDSOHandler)
+
+defaultDSOHandler = mkstempEmbeddedDSOHandler
 
 
 class SimpleCompiler():
