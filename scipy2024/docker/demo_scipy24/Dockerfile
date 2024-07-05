@@ -16,7 +16,7 @@ RUN conda init && source /root/.bashrc && conda activate scipy24 && cd /root/git
 
 RUN cd /root/git/numba && git apply /root/git/pixie/scipy2024/numba_bootstrap.patch
 
-RUN cp /root/git/pixie/scipy2024/* .
+RUN cp -r /root/git/pixie/scipy2024/* .
 
 RUN conda init && source /root/.bashrc && conda activate scipy24 && python bootstrap.py /root/git/numba
 
