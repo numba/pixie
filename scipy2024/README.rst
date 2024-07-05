@@ -21,6 +21,12 @@ NOTE: This demonstration currently targets x86_64 CPUs running Linux operating
 systems and Apple M1 silicon running OSX. Other CPUs and operating systems will
 be supported in the future.
 
+If you want to quickly run the demos, you can run a development
+snapshot of PIXIE with Docker, and then skip to "Running the demos"
+below::
+
+  $ docker run -i --platform linux/amd64 -t numba/pixie-scipy24
+
 Set up instructions for all examples:
 
 0. First create an environment and install PIXIE locally. PIXIE depends on the
