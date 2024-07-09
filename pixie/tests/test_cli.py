@@ -5,6 +5,32 @@ from tempfile import TemporaryDirectory
 
 from pixie.tests.support import PixieTestCase
 
+example_config = """
+{
+    "translation_unit": [
+    {
+      "name": "llvm_foo_double_double",
+      "source": "int _Z3fooPdS_(double* a, double* b, double* c) {
+                    *c = *a + *b;
+                }"
+    },
+    {
+      "name": "llvm_foo_float_float",
+      "path": "llvm_foo_float_float.c",
+      "extra_flags": []
+    },
+  ],
+  "export_config": {
+      "symbols": [
+        {
+          "python_name": "foo",
+          "symbol_name": "_Z3fooPdS_",
+          "signature": "void(double*, double*, double*)"
+        }
+      ]
+    }
+}"""
+
 
 class TestCLI(PixieTestCase):
 
@@ -27,6 +53,41 @@ class TestCLI(PixieTestCase):
             self.assertEqual(2, len(files))
             self.assertEqual(files[0], cfile_name)
             self.assertTrue(files[1].startswith(testlib_name))
+
+    def test_pixie_cc_config(self):
+        cfile_name = "test.c"
+        cfile_source = textwrap.dedent(
+            """
+            int f(x) {
+                return x + 1;
+            }
+            """)
+        json_file_name = "config.json"
+        json_file_source = example_config
+        tu_cfile_name = "llvm_foo_float_float.c"
+        tu_cfile_source = textwrap.dedent(
+            """
+            int foo(float* a, float* b, float* c) { *c = *a + *b; }
+            """)
+        with TemporaryDirectory(prefix=self.tmpdir.name) as tmpdir:
+            cfile_path = os.path.join(tmpdir, cfile_name)
+            with open(cfile_path, "wt") as f:
+                f.write(cfile_source)
+            json_file_path = os.path.join(tmpdir, json_file_name)
+            with open(json_file_path, "wt") as f:
+                f.write(json_file_source)
+            with open(os.path.join(tmpdir, tu_cfile_name), "wt") as f:
+                f.write(tu_cfile_source)
+            testlib_name = "testclib"
+            command = ["pixie-cc", cfile_name, "-g", "-O0", "-o",
+                       testlib_name, "-C", json_file_name]
+            subprocess.run(command, check=True, cwd=tmpdir)
+            files = sorted(os.listdir(tmpdir))
+            self.assertEqual(4, len(files))
+            self.assertEqual(files[0], json_file_name)
+            self.assertEqual(files[1], tu_cfile_name)
+            self.assertEqual(files[2], cfile_name)
+            self.assertTrue(files[3].startswith(testlib_name))
 
     def test_pixie_cc_two_files(self):
         cfile1_name = "test1.c"
