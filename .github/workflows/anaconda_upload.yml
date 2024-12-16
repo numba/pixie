@@ -35,7 +35,7 @@ jobs:
         run: |
           conda install pytest coverage numpy numba conda-build anaconda-client
       - name: Build and upload
-        uses: uibcdf/action-build-and-upload-conda-packages@v1.3.0
+        uses: uibcdf/action-build-and-upload-conda-packages@v1.4.0
         with:
           meta_yaml_dir: buildscripts/conda_recipes/pixie/
           python-version: ${{ matrix.python-version }}
