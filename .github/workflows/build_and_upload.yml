@@ -1,0 +1,89 @@
+name: pixie_conda_builder
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    paths:
+      - .github/workflows/build_and_upload.yml
+      - buildscripts/conda_recipes/pixie/**
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Conda Platform
+        default: linux-64
+        required: true
+        type: choice
+        options:
+          - all
+          - linux-64
+
+# Add concurrency control
+concurrency:
+  group: >-
+    ${{ github.workflow }}-
+    ${{ (github.event_name == 'push' && github.ref)
+      || github.event.pull_request.number
+      || toJson(github.event.inputs)
+      || github.sha }}
+  cancel-in-progress: true
+
+env:
+  ARTIFACT_RETENTION_DAYS: 7
+
+jobs:
+  build:
+    name: ${{ matrix.platform }}-py${{ matrix.python-version }}-build
+    runs-on: ${{ matrix.runner }}
+    env:
+      EXTRA_CHANNELS: 'conda-forge'
+    defaults:
+      run:
+        shell: bash -elx {0}
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+        platform: ["linux-64"]
+        runner: ["ubuntu-24.04"]
+        channel: ["conda-forge"]
+      fail-fast: false
+
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@835234971496cad1653abb28a638a281cf32541f # v3.2.0
+        with:
+          auto-update-conda: true
+          auto-activate-base: true
+
+      - name: Install conda-build
+        run: conda install conda-build
+
+      - name: Build pixie conda package
+        run: |
+          MLIR_CHANNEL=${{ matrix.channel }}
+          CONDA_CHANNEL_DIR="conda_channel_dir"
+          mkdir $CONDA_CHANNEL_DIR
+          if [ -n "${EXTRA_CHANNELS}" ]; then
+            extra_args=(${EXTRA_CHANNELS})
+          else
+            extra_args=()
+          fi
+          conda build --debug -c "${MLIR_CHANNEL}" -c defaults --python=${{ matrix.python-version }} buildscripts/conda_recipes/pixie --output-folder="${CONDA_CHANNEL_DIR}" --no-test
+
+      - name: Upload pixie conda package
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: pixie-${{ matrix.platform }}-py${{ matrix.python-version }}
+          path: conda_channel_dir
+          compression-level: 0
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+          if-no-files-found: error
+
+      - name: Show Workflow Run ID
+        run: "echo \"Workflow Run ID: ${{ github.run_id }}\""
